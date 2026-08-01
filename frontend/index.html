@@ -20,6 +20,11 @@
 <body>
   <div id="map"></div>
 
+  <div id="search-bar-container">
+    <input type="text" id="search-input" placeholder="🔍 Rechercher un lieu..." autocomplete="off" />
+    <div id="search-results" class="hidden"></div>
+  </div>
+
   <div id="map-controls-top">
     <button type="button" id="btn-install-app" class="map-fab hidden" aria-label="Installer l'application">📲</button>
     <button type="button" id="btn-gps-toggle" class="map-fab" aria-label="Suivi GPS en direct">🛰️</button>
@@ -89,7 +94,10 @@
         <p><strong>Distance :</strong> <span id="res-distance"></span> km</p>
         <p><strong>Dénivelé :</strong> <span id="res-denivele"></span> m</p>
         <p id="row-distance-restante" class="hidden"><strong>Distance restante (GPS) :</strong> <span id="res-distance-restante"></span> km</p>
+        <p id="row-denivele-restant" class="hidden"><strong>Dénivelé restant (GPS) :</strong> <span id="res-denivele-restant"></span> m</p>
       </div>
+      <button type="button" id="btn-demarrer-nav" class="btn-secondary hidden">🧭 Démarrer la rando</button>
+      <button type="button" id="btn-arreter-nav" class="btn-secondary hidden">🛑 Arrêter la navigation</button>
       <div id="meteo-panel" class="meteo hidden">
         <p class="meteo-main">
           <span id="meteo-icon"></span>

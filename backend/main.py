@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import models
 from database import Base, engine
-from routers import guide, historique, itineraires, meteo, signalements
+from routers import geocode, guide, historique, itineraires, meteo, signalements
 
 
 def _migrer_colonnes_itineraires():
@@ -46,6 +46,7 @@ app.add_middleware(
 )
 
 app.include_router(itineraires.router)
+app.include_router(geocode.router)
 app.include_router(signalements.router)
 app.include_router(meteo.router)
 app.include_router(guide.router)

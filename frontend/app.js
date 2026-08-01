@@ -177,6 +177,10 @@ const resDistanceEl = document.getElementById("res-distance");
 const resDeniveleEl = document.getElementById("res-denivele");
 const rowDistanceRestanteEl = document.getElementById("row-distance-restante");
 const resDistanceRestanteEl = document.getElementById("res-distance-restante");
+const rowDeniveleRestantEl = document.getElementById("row-denivele-restant");
+const resDeniveleRestantEl = document.getElementById("res-denivele-restant");
+const btnDemarrerNav = document.getElementById("btn-demarrer-nav");
+const btnArreterNav = document.getElementById("btn-arreter-nav");
 const meteoPanelEl = document.getElementById("meteo-panel");
 const meteoIconEl = document.getElementById("meteo-icon");
 const meteoTempEl = document.getElementById("meteo-temp");
@@ -382,9 +386,8 @@ function haversineMetres(lat1, lon1, lat2, lon2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
-// Distance restante = distance jusqu'au point du tracé le plus proche
-// + longueur du tracé restant depuis ce point jusqu'à l'arrivée.
-function distanceRestanteSurTrace(userLatLng) {
+// Trouve le point du tracé le plus proche de la position donnée (index + distance).
+function pointTraceLePlusProche(userLatLng) {
   let idxProche = 0;
   let distProche = Infinity;
 
@@ -396,7 +399,12 @@ function distanceRestanteSurTrace(userLatLng) {
       idxProche = i;
     }
   }
+  return { idxProche, distProche };
+}
 
+// Distance restante = distance jusqu'au point du tracé le plus proche
+// + longueur du tracé restant depuis ce point jusqu'à l'arrivée.
+function distanceRestanteSurTrace(idxProche, distProche) {
   let restant = distProche;
   for (let i = idxProche; i < currentTraceCoords.length - 1; i++) {
     const [lat1, lon1] = currentTraceCoords[i];
@@ -404,6 +412,17 @@ function distanceRestanteSurTrace(userLatLng) {
     restant += haversineMetres(lat1, lon1, lat2, lon2);
   }
   return restant;
+}
+
+// Dénivelé positif restant depuis le point le plus proche jusqu'à l'arrivée.
+function deniveleRestantSurTrace(idxProche) {
+  let denivele = 0;
+  for (let i = idxProche; i < currentTraceCoords.length - 1; i++) {
+    const ele1 = currentTraceCoords[i][2] ?? 0;
+    const ele2 = currentTraceCoords[i + 1][2] ?? 0;
+    if (ele2 > ele1) denivele += ele2 - ele1;
+  }
+  return denivele;
 }
 
 function showGpsError(text) {
@@ -422,9 +441,31 @@ function onGpsPosition(position) {
   }
 
   if (currentTraceCoords && currentTraceCoords.length > 1) {
-    const restantM = distanceRestanteSurTrace(latlng);
+    const { idxProche, distProche } = pointTraceLePlusProche(latlng);
+    const restantM = distanceRestanteSurTrace(idxProche, distProche);
     resDistanceRestanteEl.textContent = (restantM / 1000).toFixed(2);
     rowDistanceRestanteEl.classList.remove("hidden");
+
+    if (navigationActive) {
+      resDeniveleRestantEl.textContent = Math.round(deniveleRestantSurTrace(idxProche));
+      rowDeniveleRestantEl.classList.remove("hidden");
+
+      if (traceParcourueLine) {
+        traceParcourueLine.setLatLngs(
+          currentTraceCoords.slice(0, idxProche + 1).map(([lat, lon]) => [lat, lon])
+        );
+      }
+
+      const horsTrace = distProche > SEUIL_HORS_TRACE_M;
+      if (horsTrace && !horsTraceActif) {
+        showGpsError(`⚠️ Vous semblez vous être éloigné(e) du tracé (~${Math.round(distProche)} m).`);
+      } else if (!horsTrace && horsTraceActif) {
+        gpsErrorBanner.classList.add("hidden");
+      }
+      horsTraceActif = horsTrace;
+
+      map.setView(latlng, map.getZoom(), { animate: false });
+    }
   }
 }
 
@@ -463,6 +504,7 @@ function stopGpsTracking() {
     gpsMarker = null;
   }
   rowDistanceRestanteEl.classList.add("hidden");
+  if (navigationActive) arreterNavigation();
 }
 
 btnGpsToggle.addEventListener("click", () => {
@@ -472,6 +514,42 @@ btnGpsToggle.addEventListener("click", () => {
     startGpsTracking();
   }
 });
+
+// ---------- Mode navigation guidée ----------
+
+const SEUIL_HORS_TRACE_M = 80;
+
+let navigationActive = false;
+let traceParcourueLine = null;
+let horsTraceActif = false;
+
+function demarrerNavigation() {
+  if (!currentTraceCoords) return;
+  navigationActive = true;
+  horsTraceActif = false;
+  btnDemarrerNav.classList.add("hidden");
+  btnArreterNav.classList.remove("hidden");
+  traceParcourueLine = L.polyline([], { color: "#999", weight: 5, opacity: 0.85 }).addTo(map);
+  if (!gpsActive) startGpsTracking();
+}
+
+// Arrête aussi le suivi GPS : la navigation en est propriétaire tant qu'elle est active.
+function arreterNavigation() {
+  navigationActive = false;
+  btnDemarrerNav.classList.remove("hidden");
+  btnArreterNav.classList.add("hidden");
+  if (traceParcourueLine) {
+    traceParcourueLine.remove();
+    traceParcourueLine = null;
+  }
+  rowDeniveleRestantEl.classList.add("hidden");
+  gpsErrorBanner.classList.add("hidden");
+  horsTraceActif = false;
+  stopGpsTracking();
+}
+
+btnDemarrerNav.addEventListener("click", demarrerNavigation);
+btnArreterNav.addEventListener("click", arreterNavigation);
 
 // ---------- Risque d'orage (grille de points sur la zone visible) ----------
 
@@ -524,6 +602,82 @@ chkOrage.addEventListener("change", () => {
 
 map.on("moveend", () => {
   if (chkOrage.checked) fetchOrageGrille();
+});
+
+// ---------- Recherche de lieu (géocodage OpenRouteService) ----------
+
+const searchInput = document.getElementById("search-input");
+const searchResultsEl = document.getElementById("search-results");
+let searchDebounceTimer = null;
+let searchResultMarker = null;
+
+function renderSearchResults(features) {
+  searchResultsEl.innerHTML = "";
+
+  if (features.length === 0) {
+    const div = document.createElement("div");
+    div.className = "search-result-item";
+    div.textContent = "Aucun résultat";
+    searchResultsEl.appendChild(div);
+    searchResultsEl.classList.remove("hidden");
+    return;
+  }
+
+  for (const feature of features) {
+    const div = document.createElement("div");
+    div.className = "search-result-item";
+    div.textContent = feature.properties.label;
+    div.addEventListener("click", () => selectionnerLieu(feature));
+    searchResultsEl.appendChild(div);
+  }
+  searchResultsEl.classList.remove("hidden");
+}
+
+function selectionnerLieu(feature) {
+  const [lon, lat] = feature.geometry.coordinates;
+  map.setView([lat, lon], 14);
+
+  if (searchResultMarker) searchResultMarker.remove();
+  searchResultMarker = L.marker([lat, lon]).addTo(map).bindPopup(feature.properties.label).openPopup();
+
+  searchInput.value = feature.properties.label;
+  searchResultsEl.classList.add("hidden");
+  searchResultsEl.innerHTML = "";
+}
+
+async function rechercherLieu(query) {
+  const centre = map.getCenter();
+  const params = new URLSearchParams({ q: query, lat: centre.lat, lon: centre.lng });
+  try {
+    const resp = await apiFetch(`/geocode/search?${params}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    renderSearchResults(data.features || []);
+  } catch (err) {
+    console.error("Erreur recherche de lieu :", err);
+    searchResultsEl.innerHTML = '<div class="search-result-item">Erreur de recherche</div>';
+    searchResultsEl.classList.remove("hidden");
+  }
+}
+
+searchInput.addEventListener("input", () => {
+  clearTimeout(searchDebounceTimer);
+  const query = searchInput.value.trim();
+  if (query.length < 3) {
+    searchResultsEl.classList.add("hidden");
+    return;
+  }
+  searchDebounceTimer = setTimeout(() => rechercherLieu(query), 400);
+});
+
+searchInput.addEventListener("focus", () => {
+  if (searchResultsEl.innerHTML.trim() !== "") searchResultsEl.classList.remove("hidden");
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#search-bar-container")) {
+    searchResultsEl.classList.add("hidden");
+  }
 });
 
 map.on("click", (e) => {
@@ -852,8 +1006,12 @@ formItineraire.addEventListener("submit", async (e) => {
   itineraireErrorEl.classList.add("hidden");
   resultatEl.classList.add("hidden");
   rowDistanceRestanteEl.classList.add("hidden");
+  rowDeniveleRestantEl.classList.add("hidden");
   meteoPanelEl.classList.add("hidden");
   btnMarquerFait.classList.add("hidden");
+  if (navigationActive) arreterNavigation();
+  btnDemarrerNav.classList.add("hidden");
+  btnArreterNav.classList.add("hidden");
   btnGenerer.disabled = true;
   btnGenerer.textContent = "Génération en cours...";
 
@@ -885,7 +1043,7 @@ formItineraire.addEventListener("submit", async (e) => {
     map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
 
     const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
-    currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat]) => [lat, lon]) : null;
+    currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat, ele]) => [lat, lon, ele]) : null;
 
     resDistanceEl.textContent = data.distance_km.toFixed(2);
     resDeniveleEl.textContent = Math.round(data.denivele_m);
@@ -894,6 +1052,7 @@ formItineraire.addEventListener("submit", async (e) => {
     fetchSignalementsProches(departLatLng.lat, departLatLng.lng);
     fetchMeteo(departLatLng.lat, departLatLng.lng);
     resetMarquerFait(data.id);
+    btnDemarrerNav.classList.remove("hidden");
   } catch (err) {
     itineraireErrorEl.textContent = err.message;
     itineraireErrorEl.classList.remove("hidden");
