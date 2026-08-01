@@ -120,6 +120,7 @@ const meteoLayersPopover = document.getElementById("meteo-layers-popover");
 const chkPluie = document.getElementById("chk-pluie");
 const chkNuages = document.getElementById("chk-nuages");
 const chkVent = document.getElementById("chk-vent");
+const chkOrage = document.getElementById("chk-orage");
 
 btnMeteoLayersToggle.addEventListener("click", () => {
   meteoLayersPopover.classList.toggle("hidden");
@@ -141,6 +142,7 @@ wireCoucheToggle(chkVent, coucheVent);
 
 const traceLayer = L.featureGroup().addTo(map);
 const signalementsLayer = L.layerGroup().addTo(map);
+const orageLayer = L.layerGroup();
 let departMarker = null;
 let arriveeMarker = null;
 let pendingMarker = null;
@@ -150,6 +152,7 @@ let departLatLng = null;
 let arriveeLatLng = null;
 let signalementLatLng = null;
 let currentItineraireId = null;
+let currentTraceCoords = null; // [[lat, lon], ...] du dernier itinéraire généré, pour la distance restante GPS
 
 const arriveeIcon = L.divIcon({
   html: '<span style="font-size:26px;">🏁</span>',
@@ -172,6 +175,8 @@ const btnGenerer = document.getElementById("btn-generer");
 const resultatEl = document.getElementById("resultat-itineraire");
 const resDistanceEl = document.getElementById("res-distance");
 const resDeniveleEl = document.getElementById("res-denivele");
+const rowDistanceRestanteEl = document.getElementById("row-distance-restante");
+const resDistanceRestanteEl = document.getElementById("res-distance-restante");
 const meteoPanelEl = document.getElementById("meteo-panel");
 const meteoIconEl = document.getElementById("meteo-icon");
 const meteoTempEl = document.getElementById("meteo-temp");
@@ -192,6 +197,10 @@ const geolocErrorEl = document.getElementById("geoloc-error");
 const pickingBanner = document.getElementById("picking-banner");
 const pickingBannerText = document.getElementById("picking-banner-text");
 const btnPickingCancel = document.getElementById("btn-picking-cancel");
+const btnGpsToggle = document.getElementById("btn-gps-toggle");
+const gpsErrorBanner = document.getElementById("gps-error-banner");
+const gpsErrorText = document.getElementById("gps-error-text");
+const btnGpsErrorClose = document.getElementById("btn-gps-error-close");
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
@@ -347,6 +356,174 @@ btnGeoloc.addEventListener("click", () => {
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
+});
+
+// ---------- Suivi GPS en direct ----------
+
+const gpsIcon = L.divIcon({
+  html: '<div class="gps-dot"></div>',
+  className: "",
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+let gpsWatchId = null;
+let gpsMarker = null;
+let gpsActive = false;
+
+function haversineMetres(lat1, lon1, lat2, lon2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Distance restante = distance jusqu'au point du tracé le plus proche
+// + longueur du tracé restant depuis ce point jusqu'à l'arrivée.
+function distanceRestanteSurTrace(userLatLng) {
+  let idxProche = 0;
+  let distProche = Infinity;
+
+  for (let i = 0; i < currentTraceCoords.length; i++) {
+    const [lat, lon] = currentTraceCoords[i];
+    const d = haversineMetres(userLatLng.lat, userLatLng.lng, lat, lon);
+    if (d < distProche) {
+      distProche = d;
+      idxProche = i;
+    }
+  }
+
+  let restant = distProche;
+  for (let i = idxProche; i < currentTraceCoords.length - 1; i++) {
+    const [lat1, lon1] = currentTraceCoords[i];
+    const [lat2, lon2] = currentTraceCoords[i + 1];
+    restant += haversineMetres(lat1, lon1, lat2, lon2);
+  }
+  return restant;
+}
+
+function showGpsError(text) {
+  gpsErrorText.textContent = text;
+  gpsErrorBanner.classList.remove("hidden");
+}
+
+btnGpsErrorClose.addEventListener("click", () => gpsErrorBanner.classList.add("hidden"));
+
+function onGpsPosition(position) {
+  const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+  if (gpsMarker) {
+    gpsMarker.setLatLng(latlng);
+  } else {
+    gpsMarker = L.marker(latlng, { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map);
+  }
+
+  if (currentTraceCoords && currentTraceCoords.length > 1) {
+    const restantM = distanceRestanteSurTrace(latlng);
+    resDistanceRestanteEl.textContent = (restantM / 1000).toFixed(2);
+    rowDistanceRestanteEl.classList.remove("hidden");
+  }
+}
+
+function onGpsError(err) {
+  stopGpsTracking();
+  showGpsError(
+    err.code === err.PERMISSION_DENIED
+      ? "Permission de localisation refusée."
+      : "Impossible de suivre votre position en direct."
+  );
+}
+
+function startGpsTracking() {
+  if (!navigator.geolocation) {
+    showGpsError("Géolocalisation non disponible sur cet appareil.");
+    return;
+  }
+  gpsActive = true;
+  btnGpsToggle.classList.add("active");
+  gpsWatchId = navigator.geolocation.watchPosition(onGpsPosition, onGpsError, {
+    enableHighAccuracy: true,
+    maximumAge: 5000,
+    timeout: 15000,
+  });
+}
+
+function stopGpsTracking() {
+  gpsActive = false;
+  btnGpsToggle.classList.remove("active");
+  if (gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+  }
+  if (gpsMarker) {
+    gpsMarker.remove();
+    gpsMarker = null;
+  }
+  rowDistanceRestanteEl.classList.add("hidden");
+}
+
+btnGpsToggle.addEventListener("click", () => {
+  if (gpsActive) {
+    stopGpsTracking();
+  } else {
+    startGpsTracking();
+  }
+});
+
+// ---------- Risque d'orage (grille de points sur la zone visible) ----------
+
+function orageMarker(point) {
+  return L.circleMarker([point.lat, point.lon], {
+    radius: 14,
+    color: "#c99400",
+    weight: 2,
+    fillColor: "#ffdd33",
+    fillOpacity: 0.85,
+  }).bindPopup(
+    `⛈️ <strong>Risque d'orage élevé</strong><br>` +
+      `Heure estimée : ${point.heure_estimee ? point.heure_estimee.slice(11, 16) : "?"}<br>` +
+      `Probabilité de précipitation : ${point.probabilite_precip}%<br>` +
+      `CAPE : ${Math.round(point.cape)} J/kg`,
+    { autoPan: false }
+  );
+}
+
+async function fetchOrageGrille() {
+  const bounds = map.getBounds();
+  const params = new URLSearchParams({
+    lat_min: bounds.getSouth(),
+    lat_max: bounds.getNorth(),
+    lon_min: bounds.getWest(),
+    lon_max: bounds.getEast(),
+  });
+  try {
+    const resp = await apiFetch(`/meteo/orage-grille?${params}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const points = await resp.json();
+    orageLayer.clearLayers();
+    for (const point of points) {
+      orageMarker(point).addTo(orageLayer);
+    }
+  } catch (err) {
+    console.error("Erreur chargement risque orage :", err);
+  }
+}
+
+chkOrage.addEventListener("change", () => {
+  if (chkOrage.checked) {
+    orageLayer.addTo(map);
+    fetchOrageGrille();
+  } else {
+    map.removeLayer(orageLayer);
+    orageLayer.clearLayers();
+  }
+});
+
+map.on("moveend", () => {
+  if (chkOrage.checked) fetchOrageGrille();
 });
 
 map.on("click", (e) => {
@@ -674,6 +851,7 @@ formItineraire.addEventListener("submit", async (e) => {
 
   itineraireErrorEl.classList.add("hidden");
   resultatEl.classList.add("hidden");
+  rowDistanceRestanteEl.classList.add("hidden");
   meteoPanelEl.classList.add("hidden");
   btnMarquerFait.classList.add("hidden");
   btnGenerer.disabled = true;
@@ -705,6 +883,9 @@ formItineraire.addEventListener("submit", async (e) => {
       style: { color: "#2c7be5", weight: 4 },
     }).addTo(traceLayer);
     map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
+
+    const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
+    currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat]) => [lat, lon]) : null;
 
     resDistanceEl.textContent = data.distance_km.toFixed(2);
     resDeniveleEl.textContent = Math.round(data.denivele_m);

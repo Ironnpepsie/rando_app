@@ -22,6 +22,7 @@
 
   <div id="map-controls-top">
     <button type="button" id="btn-install-app" class="map-fab hidden" aria-label="Installer l'application">📲</button>
+    <button type="button" id="btn-gps-toggle" class="map-fab" aria-label="Suivi GPS en direct">🛰️</button>
     <button type="button" id="btn-meteo-layers-toggle" class="map-fab" aria-label="Couches météo">🌦️</button>
   </div>
 
@@ -30,11 +31,17 @@
     <label class="switch-row"><input type="checkbox" id="chk-pluie"> <span>🌧️ Pluie</span></label>
     <label class="switch-row"><input type="checkbox" id="chk-nuages"> <span>☁️ Nuages</span></label>
     <label class="switch-row"><input type="checkbox" id="chk-vent"> <span>💨 Vent</span></label>
+    <label class="switch-row"><input type="checkbox" id="chk-orage"> <span>⛈️ Risque orage (3h)</span></label>
   </div>
 
   <div id="picking-banner" class="picking-banner hidden">
     <span id="picking-banner-text">Touchez la carte pour choisir la position</span>
     <button type="button" id="btn-picking-cancel" aria-label="Annuler">✕</button>
+  </div>
+
+  <div id="gps-error-banner" class="picking-banner picking-banner-error hidden">
+    <span id="gps-error-text"></span>
+    <button type="button" id="btn-gps-error-close" aria-label="Fermer">✕</button>
   </div>
 
   <div id="sheet-itineraire" class="sheet">
@@ -81,6 +88,7 @@
       <div id="resultat-itineraire" class="resultat hidden">
         <p><strong>Distance :</strong> <span id="res-distance"></span> km</p>
         <p><strong>Dénivelé :</strong> <span id="res-denivele"></span> m</p>
+        <p id="row-distance-restante" class="hidden"><strong>Distance restante (GPS) :</strong> <span id="res-distance-restante"></span> km</p>
       </div>
       <div id="meteo-panel" class="meteo hidden">
         <p class="meteo-main">
