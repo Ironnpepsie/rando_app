@@ -1,12 +1,7 @@
-const API_BASE = "https://wrongly-maybe-darkened.ngrok-free.dev";
+const API_BASE = "https://randoapp-production.up.railway.app";
 
-// ngrok (plan gratuit) affiche une page d'avertissement HTML sur chaque requête
-// tant que ce header n'est pas présent, ce qui casse les appels fetch/JSON.
 function apiFetch(path, options = {}) {
-  return fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { "ngrok-skip-browser-warning": "true", ...(options.headers || {}) },
-  });
+  return fetch(`${API_BASE}${path}`, options);
 }
 const DEFAULT_CENTER = [45.9237, 6.8694]; // Chamonix
 
