@@ -1,0 +1,433 @@
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  font-family: system-ui, -apple-system, sans-serif;
+  overscroll-behavior: none;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+}
+
+#map.picking {
+  cursor: crosshair;
+}
+
+/* ---------- Contrôles flottants (haut) ---------- */
+
+#map-controls-top {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 1100;
+  display: flex;
+  gap: 10px;
+}
+
+.map-fab {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid #ccc;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.popover {
+  position: fixed;
+  top: calc(66px + env(safe-area-inset-top));
+  right: 12px;
+  z-index: 1100;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+  padding: 8px;
+  width: 190px;
+}
+
+.popover h3 {
+  margin: 4px 6px 8px;
+  font-size: 14px;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  font-size: 15px;
+  border-radius: 8px;
+}
+
+.switch-row:active {
+  background: #f0f0f0;
+}
+
+.switch-row input[type="checkbox"] {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+/* ---------- Bandeau mode sélection sur carte ---------- */
+
+.picking-banner {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 12px;
+  right: 72px;
+  z-index: 1150;
+  background: #2c7be5;
+  color: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: 10px 8px 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.picking-banner button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+/* ---------- Bottom sheets ---------- */
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  z-index: 1000;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.3);
+  max-height: 62vh;
+  display: none;
+  flex-direction: column;
+}
+
+.sheet.open {
+  display: flex;
+}
+
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 8px 10px 18px;
+  border-bottom: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.sheet-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.sheet-close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: #f0f0f0;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.sheet-body {
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  overflow-y: auto;
+}
+
+.sheet-body form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sheet-body label {
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
+  gap: 5px;
+}
+
+/* ---------- Barre d'onglets (bas) ---------- */
+
+#tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1200;
+  display: flex;
+  background: #fff;
+  border-top: 1px solid #ddd;
+  padding-bottom: env(safe-area-inset-bottom);
+  height: calc(64px + env(safe-area-inset-bottom));
+}
+
+.tab-btn {
+  flex: 1;
+  border: none;
+  background: none;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px;
+  color: #555;
+}
+
+.tab-btn.active {
+  color: #2c7be5;
+  background: #eaf2fb;
+}
+
+.tab-icon {
+  font-size: 20px;
+}
+
+.tab-label {
+  font-size: 11px;
+}
+
+/* ---------- Éléments de formulaire / boutons (cibles tactiles) ---------- */
+
+input,
+select,
+textarea {
+  font-size: 16px; /* évite le zoom auto de Safari iOS au focus */
+  padding: 11px 12px;
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  min-height: 44px;
+}
+
+textarea {
+  min-height: 60px;
+}
+
+button {
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid #999;
+  background: #f4f4f4;
+  min-height: 44px;
+}
+
+button:active:not(:disabled) {
+  background: #e0e0e0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-pick {
+  width: 100%;
+}
+
+.btn-pick.active {
+  background: #2c7be5;
+  color: #fff;
+  border-color: #2c7be5;
+}
+
+.btn-secondary {
+  width: 100%;
+}
+
+.coords {
+  font-size: 13px;
+  color: #555;
+  margin: 8px 0 0;
+}
+
+.resultat {
+  margin-top: 12px;
+  font-size: 14px;
+  background: #eef6ee;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.resultat p {
+  margin: 3px 0;
+}
+
+.meteo {
+  margin-top: 12px;
+  font-size: 14px;
+  background: #eaf2fb;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.meteo-main {
+  margin: 2px 0;
+  font-size: 15px;
+}
+
+.meteo #meteo-icon {
+  font-size: 19px;
+}
+
+.meteo .msg-error {
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.msg {
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.msg-error {
+  color: #b3261e;
+}
+
+.msg-success {
+  color: #1b7f3a;
+}
+
+.msg-info {
+  color: #8a5a00;
+  font-weight: 600;
+}
+
+.pending-info {
+  margin-top: 12px;
+  font-size: 13px;
+  background: #fff4e0;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.pending-info p {
+  margin: 0 0 8px;
+  font-weight: 600;
+  color: #8a5a00;
+}
+
+.hidden {
+  display: none;
+}
+
+.historique-liste {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.historique-liste li {
+  background: #f4f4f4;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.historique-liste li strong {
+  font-size: 14px;
+}
+
+.leaflet-popup-content {
+  font-size: 14px;
+}
+
+/* Cibles tactiles plus grandes pour les contrôles Leaflet */
+.leaflet-control-zoom a {
+  width: 40px !important;
+  height: 40px !important;
+  line-height: 40px !important;
+  font-size: 20px !important;
+}
+
+.leaflet-touch .leaflet-bar a {
+  width: 40px;
+  height: 40px;
+  line-height: 40px;
+}
+
+/* ---------- Écrans larges (tablette / desktop) ---------- */
+
+@media (min-width: 700px) {
+  #map-controls-top {
+    top: 12px;
+  }
+
+  .picking-banner {
+    top: 12px;
+    left: 340px;
+    right: auto;
+    width: 360px;
+  }
+
+  #tabbar {
+    left: 12px;
+    right: auto;
+    top: 12px;
+    bottom: auto;
+    width: 320px;
+    height: auto;
+    flex-direction: row;
+    border-radius: 12px;
+    border: 1px solid #ddd;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    padding-bottom: 0;
+  }
+
+  .sheet {
+    left: 12px;
+    right: auto;
+    top: 76px;
+    bottom: 12px;
+    width: 320px;
+    max-height: none;
+    border-radius: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+  }
+
+  .sheet-body {
+    padding-bottom: 16px;
+  }
+}

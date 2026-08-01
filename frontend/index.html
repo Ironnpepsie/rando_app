@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+  <title>RandoApp</title>
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#2c7be5" />
+
+  <!-- iOS : Safari ne lit pas le manifest.json pour "Sur l'écran d'accueil", il faut ces balises -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="RandoApp" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="map-controls-top">
+    <button type="button" id="btn-install-app" class="map-fab hidden" aria-label="Installer l'application">📲</button>
+    <button type="button" id="btn-meteo-layers-toggle" class="map-fab" aria-label="Couches météo">🌦️</button>
+  </div>
+
+  <div id="meteo-layers-popover" class="popover hidden">
+    <h3>Couches météo</h3>
+    <label class="switch-row"><input type="checkbox" id="chk-pluie"> <span>🌧️ Pluie</span></label>
+    <label class="switch-row"><input type="checkbox" id="chk-nuages"> <span>☁️ Nuages</span></label>
+    <label class="switch-row"><input type="checkbox" id="chk-vent"> <span>💨 Vent</span></label>
+  </div>
+
+  <div id="picking-banner" class="picking-banner hidden">
+    <span id="picking-banner-text">Touchez la carte pour choisir la position</span>
+    <button type="button" id="btn-picking-cancel" aria-label="Annuler">✕</button>
+  </div>
+
+  <div id="sheet-itineraire" class="sheet">
+    <div class="sheet-header">
+      <h2>Générer un itinéraire</h2>
+      <button type="button" class="sheet-close" data-sheet="itineraire" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button type="button" id="btn-geoloc" class="btn-secondary">📍 Utiliser ma position actuelle</button>
+      <button type="button" id="btn-pick-depart" class="btn-pick">🗺️ Choisir le point de départ sur la carte</button>
+      <p class="coords" id="depart-coords">Aucun point sélectionné</p>
+      <p id="geoloc-error" class="msg msg-error hidden"></p>
+
+      <div class="field-block">
+        <label>
+          Mode
+          <select id="mode-itineraire">
+            <option value="boucle" selected>🔁 Boucle (retour au départ)</option>
+            <option value="point_a_point">➡️ Point à point (arrivée différente)</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="arrivee-section" class="field-block hidden">
+        <button type="button" id="btn-pick-arrivee" class="btn-pick">🏁 Choisir le point d'arrivée sur la carte</button>
+        <p class="coords" id="arrivee-coords">Aucun point sélectionné</p>
+      </div>
+
+      <form id="form-itineraire">
+        <label>
+          Durée disponible (h)
+          <input type="number" id="duree" min="0.5" step="0.25" value="2" required inputmode="decimal">
+        </label>
+        <label>
+          Niveau
+          <select id="niveau">
+            <option value="facile">Facile</option>
+            <option value="moyen" selected>Moyen</option>
+            <option value="difficile">Difficile</option>
+          </select>
+        </label>
+        <button type="submit" id="btn-generer" disabled>Générer l'itinéraire</button>
+      </form>
+      <div id="resultat-itineraire" class="resultat hidden">
+        <p><strong>Distance :</strong> <span id="res-distance"></span> km</p>
+        <p><strong>Dénivelé :</strong> <span id="res-denivele"></span> m</p>
+      </div>
+      <div id="meteo-panel" class="meteo hidden">
+        <p class="meteo-main">
+          <span id="meteo-icon"></span>
+          <span id="meteo-temp"></span>°C — <span id="meteo-desc"></span>
+        </p>
+        <p id="meteo-alert" class="msg msg-error hidden"></p>
+      </div>
+      <button type="button" id="btn-marquer-fait" class="btn-secondary hidden"></button>
+      <p id="marquer-fait-msg" class="msg hidden"></p>
+      <p id="itineraire-error" class="msg msg-error hidden"></p>
+    </div>
+  </div>
+
+  <div id="sheet-historique" class="sheet">
+    <div class="sheet-header">
+      <h2>Historique de mes randos</h2>
+      <button type="button" class="sheet-close" data-sheet="historique" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <ul id="historique-liste" class="historique-liste"></ul>
+      <p id="historique-vide" class="coords hidden">Aucune rando marquée comme faite pour l'instant.</p>
+      <button type="button" id="btn-refresh-historique" class="btn-secondary">🔄 Actualiser l'historique</button>
+    </div>
+  </div>
+
+  <div id="sheet-signalement" class="sheet">
+    <div class="sheet-header">
+      <h2>Signaler un problème</h2>
+      <button type="button" class="sheet-close" data-sheet="signalement" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button type="button" id="btn-pick-signalement" class="btn-pick">⚠️ Choisir la position sur la carte</button>
+      <p class="coords" id="signalement-coords">Aucune position sélectionnée</p>
+      <form id="form-signalement">
+        <label>
+          Type
+          <select id="type-signalement">
+            <option value="eboulement">Éboulement</option>
+            <option value="sentier_bloque">Sentier bloqué</option>
+            <option value="pont_casse">Pont cassé</option>
+            <option value="animal">Animal dangereux</option>
+            <option value="autre">Autre</option>
+          </select>
+        </label>
+        <label>
+          Description
+          <textarea id="description-signalement" rows="2" placeholder="Optionnel"></textarea>
+        </label>
+        <button type="submit" id="btn-signaler" disabled>Envoyer le signalement</button>
+      </form>
+      <p id="signalement-msg" class="msg hidden"></p>
+      <p id="signalements-cache-notice" class="msg hidden"></p>
+      <button type="button" id="btn-refresh-signalements" class="btn-secondary">🔄 Actualiser les signalements proches</button>
+
+      <div id="pending-info" class="pending-info hidden">
+        <p id="pending-info-text"></p>
+        <button type="button" id="btn-sync-now" class="btn-secondary">🔄 Réessayer l'envoi maintenant</button>
+      </div>
+    </div>
+  </div>
+
+  <nav id="tabbar">
+    <button type="button" class="tab-btn" data-sheet="itineraire">
+      <span class="tab-icon">📍</span><span class="tab-label">Itinéraire</span>
+    </button>
+    <button type="button" class="tab-btn" data-sheet="historique">
+      <span class="tab-icon">📜</span><span class="tab-label">Historique</span>
+    </button>
+    <button type="button" class="tab-btn" data-sheet="signalement">
+      <span class="tab-icon">⚠️</span><span class="tab-label">Signaler</span>
+    </button>
+  </nav>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
