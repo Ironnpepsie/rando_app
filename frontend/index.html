@@ -105,9 +105,22 @@
         </p>
         <p id="meteo-alert" class="msg msg-error hidden"></p>
       </div>
+      <div id="photos-galerie" class="photos-galerie hidden"></div>
       <button type="button" id="btn-marquer-fait" class="btn-secondary hidden"></button>
       <p id="marquer-fait-msg" class="msg hidden"></p>
       <p id="itineraire-error" class="msg msg-error hidden"></p>
+    </div>
+  </div>
+
+  <div id="sheet-suggestions" class="sheet">
+    <div class="sheet-header">
+      <h2>Sentiers à proximité</h2>
+      <button type="button" class="sheet-close" data-sheet="suggestions" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <button type="button" id="btn-chercher-suggestions" class="btn-secondary">🥾 Chercher des sentiers ici</button>
+      <p id="suggestions-msg" class="msg hidden"></p>
+      <ul id="suggestions-liste" class="historique-liste suggestions-liste"></ul>
     </div>
   </div>
 
@@ -162,6 +175,9 @@
   <nav id="tabbar">
     <button type="button" class="tab-btn" data-sheet="itineraire">
       <span class="tab-icon">📍</span><span class="tab-label">Itinéraire</span>
+    </button>
+    <button type="button" class="tab-btn" data-sheet="suggestions">
+      <span class="tab-icon">🥾</span><span class="tab-label">Sentiers</span>
     </button>
     <button type="button" class="tab-btn" data-sheet="historique">
       <span class="tab-icon">📜</span><span class="tab-label">Historique</span>

@@ -205,10 +205,14 @@ const btnGpsToggle = document.getElementById("btn-gps-toggle");
 const gpsErrorBanner = document.getElementById("gps-error-banner");
 const gpsErrorText = document.getElementById("gps-error-text");
 const btnGpsErrorClose = document.getElementById("btn-gps-error-close");
+const photosGalerieEl = document.getElementById("photos-galerie");
+const btnChercherSuggestions = document.getElementById("btn-chercher-suggestions");
+const suggestionsMsgEl = document.getElementById("suggestions-msg");
+const suggestionsListeEl = document.getElementById("suggestions-liste");
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
-const SHEETS = ["itineraire", "historique", "signalement"];
+const SHEETS = ["itineraire", "suggestions", "historique", "signalement"];
 
 function closeAllSheets() {
   for (const name of SHEETS) {
@@ -998,6 +1002,156 @@ async function fetchHistorique() {
 
 btnRefreshHistorique.addEventListener("click", fetchHistorique);
 
+// ---------- Aperçu photo du parcours (Wikimedia Commons) ----------
+
+async function fetchApercuPhotos(traceCoords) {
+  photosGalerieEl.innerHTML = "";
+  photosGalerieEl.classList.add("hidden");
+  if (!traceCoords || traceCoords.length === 0) return;
+
+  const nbPoints = Math.min(4, traceCoords.length);
+  const indices = [];
+  for (let i = 0; i < nbPoints; i++) {
+    const idx =
+      nbPoints === 1 ? 0 : Math.round((i * (traceCoords.length - 1)) / (nbPoints - 1));
+    indices.push(idx);
+  }
+
+  try {
+    const resultats = await Promise.all(
+      indices.map(async (idx) => {
+        const [lat, lon] = traceCoords[idx];
+        const resp = await apiFetch(`/photos/proches?lat=${lat}&lon=${lon}&rayon_m=1200&limite=2`);
+        if (!resp.ok) return [];
+        return resp.json();
+      })
+    );
+
+    const titresVus = new Set();
+    const photos = [];
+    for (const liste of resultats) {
+      for (const photo of liste) {
+        if (titresVus.has(photo.titre)) continue;
+        titresVus.add(photo.titre);
+        photos.push(photo);
+        if (photos.length >= 4) break;
+      }
+      if (photos.length >= 4) break;
+    }
+
+    if (photos.length === 0) return; // pas de photo trouvée à proximité : on n'affiche rien, pas de fallback
+
+    for (const photo of photos) {
+      const a = document.createElement("a");
+      a.href = photo.url_page;
+      a.target = "_blank";
+      a.rel = "noopener";
+      const img = document.createElement("img");
+      img.src = photo.url_miniature;
+      img.alt = photo.titre;
+      img.loading = "lazy";
+      a.appendChild(img);
+      photosGalerieEl.appendChild(a);
+    }
+    photosGalerieEl.classList.remove("hidden");
+  } catch (err) {
+    console.error("Erreur chargement photos :", err);
+  }
+}
+
+// ---------- Sentiers à proximité (Overpass) ----------
+
+function renderSuggestions(suggestions) {
+  suggestionsListeEl.innerHTML = "";
+
+  if (suggestions.length === 0) {
+    suggestionsMsgEl.textContent = "Aucun sentier trouvé à proximité.";
+    suggestionsMsgEl.classList.remove("hidden", "msg-error");
+    suggestionsMsgEl.classList.add("msg-info");
+    return;
+  }
+
+  suggestionsMsgEl.classList.add("hidden");
+
+  for (const s of suggestions) {
+    const li = document.createElement("li");
+    const denivele = s.denivele_m != null ? `${Math.round(s.denivele_m)} m` : "inconnu";
+    li.innerHTML = `
+      <strong>🥾 ${s.nom}</strong><br>
+      Distance : ${s.distance_km.toFixed(2)} km — Dénivelé : ${denivele}<br>
+      📍 ${s.nb_pois} point(s) d'intérêt sur le trajet
+    `;
+    li.addEventListener("click", () => chargerSuggestion(s));
+    suggestionsListeEl.appendChild(li);
+  }
+}
+
+function chargerSuggestion(suggestion) {
+  itineraireErrorEl.classList.add("hidden");
+  resultatEl.classList.add("hidden");
+  rowDistanceRestanteEl.classList.add("hidden");
+  rowDeniveleRestantEl.classList.add("hidden");
+  meteoPanelEl.classList.add("hidden");
+  photosGalerieEl.classList.add("hidden");
+  photosGalerieEl.innerHTML = "";
+  if (navigationActive) arreterNavigation();
+  btnDemarrerNav.classList.add("hidden");
+  btnArreterNav.classList.add("hidden");
+
+  traceLayer.clearLayers();
+  L.geoJSON(suggestion.trace_geojson, {
+    style: { color: "#2c7be5", weight: 4 },
+  }).addTo(traceLayer);
+  map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
+
+  const traceCoords = suggestion.trace_geojson.features?.[0]?.geometry?.coordinates;
+  currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat]) => [lat, lon]) : null;
+
+  resDistanceEl.textContent = suggestion.distance_km.toFixed(2);
+  resDeniveleEl.textContent =
+    suggestion.denivele_m != null ? Math.round(suggestion.denivele_m) : "?";
+  resultatEl.classList.remove("hidden");
+
+  // Pas d'itinéraire persisté en base pour une suggestion Overpass : "Marquer comme fait" n'a pas de sens ici.
+  currentItineraireId = null;
+  btnMarquerFait.classList.add("hidden");
+
+  if (currentTraceCoords && currentTraceCoords.length > 0) {
+    btnDemarrerNav.classList.remove("hidden");
+    const [lat, lon] = currentTraceCoords[0];
+    fetchMeteo(lat, lon);
+    fetchSignalementsProches(lat, lon);
+    fetchApercuPhotos(currentTraceCoords);
+  }
+
+  openSheet("itineraire");
+}
+
+btnChercherSuggestions.addEventListener("click", async () => {
+  suggestionsListeEl.innerHTML = "";
+  suggestionsMsgEl.textContent = "Recherche en cours...";
+  suggestionsMsgEl.classList.remove("hidden", "msg-error", "msg-success");
+  suggestionsMsgEl.classList.add("msg-info");
+  btnChercherSuggestions.disabled = true;
+
+  const centre = map.getCenter();
+  try {
+    const resp = await apiFetch(
+      `/sentiers/suggestions?lat=${centre.lat}&lon=${centre.lng}&rayon_km=10`
+    );
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    renderSuggestions(data);
+  } catch (err) {
+    console.error("Erreur recherche de sentiers :", err);
+    suggestionsMsgEl.textContent = "Erreur lors de la recherche de sentiers. Réessayez plus tard.";
+    suggestionsMsgEl.classList.remove("hidden", "msg-success", "msg-info");
+    suggestionsMsgEl.classList.add("msg-error");
+  } finally {
+    btnChercherSuggestions.disabled = false;
+  }
+});
+
 formItineraire.addEventListener("submit", async (e) => {
   e.preventDefault();
   const mode = modeSelect.value;
@@ -1008,6 +1162,8 @@ formItineraire.addEventListener("submit", async (e) => {
   rowDistanceRestanteEl.classList.add("hidden");
   rowDeniveleRestantEl.classList.add("hidden");
   meteoPanelEl.classList.add("hidden");
+  photosGalerieEl.classList.add("hidden");
+  photosGalerieEl.innerHTML = "";
   btnMarquerFait.classList.add("hidden");
   if (navigationActive) arreterNavigation();
   btnDemarrerNav.classList.add("hidden");
@@ -1051,6 +1207,7 @@ formItineraire.addEventListener("submit", async (e) => {
 
     fetchSignalementsProches(departLatLng.lat, departLatLng.lng);
     fetchMeteo(departLatLng.lat, departLatLng.lng);
+    if (currentTraceCoords) fetchApercuPhotos(currentTraceCoords);
     resetMarquerFait(data.id);
     btnDemarrerNav.classList.remove("hidden");
   } catch (err) {
