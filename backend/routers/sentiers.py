@@ -2,6 +2,7 @@ import math
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/sentiers", tags=["sentiers"])
 
@@ -14,6 +15,23 @@ DISTANCE_MIN_KM = 1  # exclut les fragments trop courts pour être une vraie sug
 DISTANCE_MAX_KM = 25  # exclut les GR multi-jours qui ne font que traverser la zone
 MAX_SUGGESTIONS = 5
 MAX_ECHANTILLONS_ELEVATION = 30
+
+RAYON_POINTS_PRATIQUES_M = 300  # distance max pour associer un point pratique au tracé
+RAYON_POINTS_PRATIQUES_MAX_M = 1000  # borne haute acceptée en entrée
+MAX_ECHANTILLONS_TRACE = 200
+
+# (clé tag, valeur tag) -> type de point pratique renvoyé au frontend
+TAGS_POINTS_PRATIQUES = {
+    ("tourism", "alpine_hut"): "refuge",
+    ("tourism", "wilderness_hut"): "refuge",
+    ("amenity", "drinking_water"): "eau",
+    ("amenity", "shelter"): "abri",
+}
+
+
+class PointsPratiquesRequest(BaseModel):
+    trace: list[list[float]]  # [[lat, lon], ...] (une éventuelle 3e valeur elevation est ignorée)
+    rayon_m: float = RAYON_POINTS_PRATIQUES_M
 
 
 def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -169,3 +187,67 @@ def suggerer_sentiers(lat: float, lon: float, rayon_km: float = 10):
         )
 
     return suggestions
+
+
+@router.post("/points-pratiques")
+def points_pratiques(payload: PointsPratiquesRequest):
+    trace = [(pt[0], pt[1]) for pt in payload.trace]
+    if len(trace) < 1:
+        return []
+    rayon_m = min(payload.rayon_m, RAYON_POINTS_PRATIQUES_MAX_M)
+
+    lats = [pt[0] for pt in trace]
+    lons = [pt[1] for pt in trace]
+    marge_deg = (rayon_m / 111000) + 0.005  # marge de bbox pour ne pas rater un point en bordure
+    sud, nord = min(lats) - marge_deg, max(lats) + marge_deg
+    ouest, est = min(lons) - marge_deg, max(lons) + marge_deg
+
+    requete = f"""
+    [out:json][timeout:25];
+    (
+      node["tourism"="alpine_hut"]({sud},{ouest},{nord},{est});
+      node["tourism"="wilderness_hut"]({sud},{ouest},{nord},{est});
+      node["amenity"="drinking_water"]({sud},{ouest},{nord},{est});
+      node["amenity"="shelter"]({sud},{ouest},{nord},{est});
+    );
+    out body;
+    """
+
+    try:
+        resp = httpx.post(OVERPASS_URL, data={"data": requete}, headers=HEADERS, timeout=30)
+        resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Erreur appel Overpass: {exc}") from exc
+
+    trace_echantillon = _echantillonner(trace, MAX_ECHANTILLONS_TRACE)
+
+    points = []
+    for el in resp.json().get("elements", []):
+        if el.get("type") != "node":
+            continue
+        tags = el.get("tags", {})
+
+        type_point = None
+        for (cle, valeur), nom_type in TAGS_POINTS_PRATIQUES.items():
+            if tags.get(cle) == valeur:
+                type_point = nom_type
+                break
+        if type_point is None:
+            continue
+
+        lat, lon = el["lat"], el["lon"]
+        distance_min = min(_haversine_m(lat, lon, c[0], c[1]) for c in trace_echantillon)
+        if distance_min > rayon_m:
+            continue
+
+        points.append(
+            {
+                "id": el["id"],
+                "type": type_point,
+                "nom": tags.get("name"),
+                "lat": lat,
+                "lon": lon,
+            }
+        )
+
+    return points

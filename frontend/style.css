@@ -80,7 +80,7 @@ html, body {
   position: fixed;
   top: calc(12px + env(safe-area-inset-top));
   left: 12px;
-  right: 190px;
+  right: 250px;
   z-index: 1100;
 }
 

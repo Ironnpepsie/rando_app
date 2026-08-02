@@ -143,6 +143,7 @@ wireCoucheToggle(chkVent, coucheVent);
 const traceLayer = L.featureGroup().addTo(map);
 const signalementsLayer = L.layerGroup().addTo(map);
 const orageLayer = L.layerGroup();
+const pointsPratiquesLayer = L.layerGroup();
 let departMarker = null;
 let arriveeMarker = null;
 let pendingMarker = null;
@@ -209,6 +210,7 @@ const photosGalerieEl = document.getElementById("photos-galerie");
 const btnChercherSuggestions = document.getElementById("btn-chercher-suggestions");
 const suggestionsMsgEl = document.getElementById("suggestions-msg");
 const suggestionsListeEl = document.getElementById("suggestions-liste");
+const btnPointsPratiquesToggle = document.getElementById("btn-points-pratiques-toggle");
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
@@ -606,6 +608,62 @@ chkOrage.addEventListener("change", () => {
 
 map.on("moveend", () => {
   if (chkOrage.checked) fetchOrageGrille();
+});
+
+// ---------- Points pratiques le long du tracé (refuges, points d'eau, abris) ----------
+
+const POINTS_PRATIQUES_META = {
+  refuge: { emoji: "🏠", label: "Refuge" },
+  eau: { emoji: "💧", label: "Point d'eau" },
+  abri: { emoji: "⛺", label: "Abri" },
+};
+
+function pointPratiqueIcon(type) {
+  const meta = POINTS_PRATIQUES_META[type] || { emoji: "❓", label: "Point pratique" };
+  return L.divIcon({
+    html: `<span style="font-size:22px;">${meta.emoji}</span>`,
+    className: "",
+    iconSize: [24, 24],
+    iconAnchor: [12, 22],
+  });
+}
+
+async function fetchPointsPratiques(traceCoords) {
+  pointsPratiquesLayer.clearLayers();
+  if (!traceCoords || traceCoords.length === 0) return;
+
+  try {
+    const resp = await apiFetch(`/sentiers/points-pratiques`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trace: traceCoords.map(([lat, lon]) => [lat, lon]),
+        rayon_m: 300,
+      }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const points = await resp.json();
+
+    for (const p of points) {
+      const meta = POINTS_PRATIQUES_META[p.type] || { emoji: "❓", label: "Point pratique" };
+      const popup = `<strong>${meta.emoji} ${meta.label}</strong>${p.nom ? `<br>${p.nom}` : ""}`;
+      L.marker([p.lat, p.lon], { icon: pointPratiqueIcon(p.type) })
+        .bindPopup(popup)
+        .addTo(pointsPratiquesLayer);
+    }
+  } catch (err) {
+    console.error("Erreur chargement points pratiques :", err);
+  }
+}
+
+btnPointsPratiquesToggle.addEventListener("click", () => {
+  const actif = btnPointsPratiquesToggle.classList.toggle("active");
+  if (actif) {
+    pointsPratiquesLayer.addTo(map);
+    fetchPointsPratiques(currentTraceCoords);
+  } else {
+    map.removeLayer(pointsPratiquesLayer);
+  }
 });
 
 // ---------- Recherche de lieu (géocodage OpenRouteService) ----------
@@ -1122,6 +1180,9 @@ function chargerSuggestion(suggestion) {
     fetchMeteo(lat, lon);
     fetchSignalementsProches(lat, lon);
     fetchApercuPhotos(currentTraceCoords);
+    if (btnPointsPratiquesToggle.classList.contains("active")) {
+      fetchPointsPratiques(currentTraceCoords);
+    }
   }
 
   openSheet("itineraire");
@@ -1208,6 +1269,9 @@ formItineraire.addEventListener("submit", async (e) => {
     fetchSignalementsProches(departLatLng.lat, departLatLng.lng);
     fetchMeteo(departLatLng.lat, departLatLng.lng);
     if (currentTraceCoords) fetchApercuPhotos(currentTraceCoords);
+    if (currentTraceCoords && btnPointsPratiquesToggle.classList.contains("active")) {
+      fetchPointsPratiques(currentTraceCoords);
+    }
     resetMarquerFait(data.id);
     btnDemarrerNav.classList.remove("hidden");
   } catch (err) {
