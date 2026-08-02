@@ -202,15 +202,17 @@ def points_pratiques(payload: PointsPratiquesRequest):
     sud, nord = min(lats) - marge_deg, max(lats) + marge_deg
     ouest, est = min(lons) - marge_deg, max(lons) + marge_deg
 
+    # nwr (pas juste node) : les refuges gérés/en dur sont très souvent cartographiés comme
+    # un bâtiment (way), pas comme un simple point ; un node-only query les rate silencieusement.
     requete = f"""
     [out:json][timeout:25];
     (
-      node["tourism"="alpine_hut"]({sud},{ouest},{nord},{est});
-      node["tourism"="wilderness_hut"]({sud},{ouest},{nord},{est});
-      node["amenity"="drinking_water"]({sud},{ouest},{nord},{est});
-      node["amenity"="shelter"]({sud},{ouest},{nord},{est});
+      nwr["tourism"="alpine_hut"]({sud},{ouest},{nord},{est});
+      nwr["tourism"="wilderness_hut"]({sud},{ouest},{nord},{est});
+      nwr["amenity"="drinking_water"]({sud},{ouest},{nord},{est});
+      nwr["amenity"="shelter"]({sud},{ouest},{nord},{est});
     );
-    out body;
+    out center;
     """
 
     try:
@@ -223,8 +225,6 @@ def points_pratiques(payload: PointsPratiquesRequest):
 
     points = []
     for el in resp.json().get("elements", []):
-        if el.get("type") != "node":
-            continue
         tags = el.get("tags", {})
 
         type_point = None
@@ -235,7 +235,15 @@ def points_pratiques(payload: PointsPratiquesRequest):
         if type_point is None:
             continue
 
-        lat, lon = el["lat"], el["lon"]
+        # node : lat/lon directement ; way/relation : centre renvoyé par "out center"
+        if el["type"] == "node":
+            lat, lon = el["lat"], el["lon"]
+        else:
+            centre = el.get("center")
+            if not centre:
+                continue
+            lat, lon = centre["lat"], centre["lon"]
+
         distance_min = min(_haversine_m(lat, lon, c[0], c[1]) for c in trace_echantillon)
         if distance_min > rayon_m:
             continue
