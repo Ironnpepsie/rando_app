@@ -621,10 +621,10 @@ const POINTS_PRATIQUES_META = {
 function pointPratiqueIcon(type) {
   const meta = POINTS_PRATIQUES_META[type] || { emoji: "❓", label: "Point pratique" };
   return L.divIcon({
-    html: `<span style="font-size:22px;">${meta.emoji}</span>`,
+    html: `<div class="map-badge"><span>${meta.emoji}</span></div>`,
     className: "",
-    iconSize: [24, 24],
-    iconAnchor: [12, 22],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 }
 
@@ -765,10 +765,10 @@ map.on("click", (e) => {
 function signalementIcon(type, pending) {
   const meta = TYPE_META[type] || TYPE_META.autre;
   return L.divIcon({
-    html: `<span style="font-size:22px;">${meta.emoji}${pending ? "⏳" : ""}</span>`,
+    html: `<div class="map-badge${pending ? " pending" : ""}"><span>${meta.emoji}${pending ? "⏳" : ""}</span></div>`,
     className: "",
-    iconSize: [28, 24],
-    iconAnchor: [14, 12],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
   });
 }
 
@@ -1196,7 +1196,7 @@ function chargerSuggestion(suggestion) {
 
   traceLayer.clearLayers();
   L.geoJSON(suggestion.trace_geojson, {
-    style: { color: "#2c7be5", weight: 4 },
+    style: { color: "#fc4c02", weight: 4 },
   }).addTo(traceLayer);
   map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
 
@@ -1293,7 +1293,7 @@ formItineraire.addEventListener("submit", async (e) => {
 
     traceLayer.clearLayers();
     L.geoJSON(data.trace_geojson, {
-      style: { color: "#2c7be5", weight: 4 },
+      style: { color: "#fc4c02", weight: 4 },
     }).addTo(traceLayer);
     map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
 
