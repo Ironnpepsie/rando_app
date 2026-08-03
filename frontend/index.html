@@ -19,6 +19,52 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <h1 class="auth-title">🏔️ RandoApp</h1>
+
+      <div class="auth-tabs">
+        <button type="button" class="auth-tab active" data-auth-tab="login">Connexion</button>
+        <button type="button" class="auth-tab" data-auth-tab="register">Inscription</button>
+      </div>
+
+      <form id="form-login" class="auth-form">
+        <label>
+          Email
+          <input type="email" id="login-email" required autocomplete="email" />
+        </label>
+        <label>
+          Mot de passe
+          <input type="password" id="login-password" required autocomplete="current-password" />
+        </label>
+        <button type="submit">Se connecter</button>
+      </form>
+
+      <form id="form-register" class="auth-form hidden">
+        <label>
+          Nom
+          <input type="text" id="register-nom" required autocomplete="name" />
+        </label>
+        <label>
+          Email
+          <input type="email" id="register-email" required autocomplete="email" />
+        </label>
+        <label>
+          Mot de passe (8 caractères minimum)
+          <input type="password" id="register-password" required minlength="8" autocomplete="new-password" />
+        </label>
+        <button type="submit">Créer mon compte</button>
+      </form>
+
+      <p id="auth-error" class="msg msg-error hidden"></p>
+
+      <div class="auth-divider"><span>ou</span></div>
+      <button type="button" id="btn-google-login" class="btn-google" disabled title="Bientôt disponible">
+        <span>🔒</span> Se connecter avec Google
+      </button>
+    </div>
+  </div>
+
   <div id="map"></div>
 
   <div id="search-bar-container">
@@ -190,6 +236,20 @@
     </div>
   </div>
 
+  <div id="sheet-profil" class="sheet">
+    <div class="sheet-header">
+      <h2>Mon profil</h2>
+      <button type="button" class="sheet-close" data-sheet="profil" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="profil-card">
+        <p class="profil-nom" id="profil-nom"></p>
+        <p class="profil-email" id="profil-email"></p>
+      </div>
+      <button type="button" id="btn-logout" class="btn-secondary">🚪 Se déconnecter</button>
+    </div>
+  </div>
+
   <nav id="tabbar">
     <button type="button" class="tab-btn" data-sheet="itineraire">
       <span class="tab-icon">📍</span><span class="tab-label">Itinéraire</span>
@@ -202,6 +262,9 @@
     </button>
     <button type="button" class="tab-btn" data-sheet="signalement">
       <span class="tab-icon">⚠️</span><span class="tab-label">Signaler</span>
+    </button>
+    <button type="button" class="tab-btn" data-sheet="profil">
+      <span class="tab-icon">👤</span><span class="tab-label">Profil</span>
     </button>
   </nav>
 

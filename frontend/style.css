@@ -797,6 +797,129 @@ button[type="submit"]:disabled {
   color: var(--accent) !important;
 }
 
+/* ---------- Authentification ---------- */
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+.auth-screen.hidden {
+  display: none;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 28px 22px;
+  margin: auto;
+}
+
+.auth-title {
+  margin: 0 0 20px;
+  font-size: 24px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.01em;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  background: var(--card-2);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 18px;
+}
+
+.auth-tab {
+  flex: 1;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.auth-tab.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-form.hidden {
+  display: none;
+}
+
+.auth-form button[type="submit"] {
+  margin-top: 4px;
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.profil-card {
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.profil-nom {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.profil-email {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
 /* ---------- Écrans larges (tablette / desktop) ---------- */
 
 @media (min-width: 700px) {
@@ -806,12 +929,12 @@ button[type="submit"]:disabled {
 
   #search-bar-container {
     top: 12px;
-    left: 340px;
+    left: 420px;
   }
 
   .picking-banner {
     top: 12px;
-    left: 340px;
+    left: 420px;
     right: auto;
     width: 360px;
   }
@@ -821,7 +944,7 @@ button[type="submit"]:disabled {
     right: auto;
     top: 12px;
     bottom: auto;
-    width: 320px;
+    width: 400px;
     height: auto;
     flex-direction: row;
     border-radius: 12px;

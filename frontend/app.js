@@ -1,7 +1,10 @@
 const API_BASE = "https://randoapp-production.up.railway.app";
 
 function apiFetch(path, options = {}) {
-  return fetch(`${API_BASE}${path}`, options);
+  const token = getToken();
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return fetch(`${API_BASE}${path}`, { ...options, headers });
 }
 const DEFAULT_CENTER = [45.9237, 6.8694]; // Chamonix
 
@@ -35,17 +38,166 @@ window.addEventListener("appinstalled", () => {
   document.getElementById("btn-install-app").classList.add("hidden");
 });
 
-function getOrCreateUserId() {
-  const key = "randoapp_user_id";
-  let id = localStorage.getItem(key);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(key, id);
-  }
-  return id;
+// ---------- Authentification ----------
+
+const TOKEN_KEY = "randoapp_token";
+const USER_KEY = "randoapp_user";
+
+function getToken() {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-const USER_ID = getOrCreateUserId();
+function getStoredUser() {
+  try {
+    return JSON.parse(localStorage.getItem(USER_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function setSession(token, user) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+  currentUser = user;
+}
+
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
+  currentUser = null;
+}
+
+let currentUser = getStoredUser();
+
+const authScreenEl = document.getElementById("auth-screen");
+const formLogin = document.getElementById("form-login");
+const formRegister = document.getElementById("form-register");
+const authErrorEl = document.getElementById("auth-error");
+const authTabs = document.querySelectorAll(".auth-tab");
+const profilNomEl = document.getElementById("profil-nom");
+const profilEmailEl = document.getElementById("profil-email");
+const btnLogout = document.getElementById("btn-logout");
+
+function showAuthScreen() {
+  authScreenEl.classList.remove("hidden");
+}
+
+function hideAuthScreen() {
+  authScreenEl.classList.add("hidden");
+}
+
+function afficherProfil() {
+  if (!currentUser) return;
+  profilNomEl.textContent = currentUser.nom;
+  profilEmailEl.textContent = currentUser.email;
+}
+
+function afficherErreurAuth(message) {
+  authErrorEl.textContent = message;
+  authErrorEl.classList.remove("hidden");
+}
+
+authTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    authTabs.forEach((t) => t.classList.remove("active"));
+    tab.classList.add("active");
+    const cible = tab.dataset.authTab;
+    formLogin.classList.toggle("hidden", cible !== "login");
+    formRegister.classList.toggle("hidden", cible !== "register");
+    authErrorEl.classList.add("hidden");
+  });
+});
+
+formLogin.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authErrorEl.classList.add("hidden");
+  const submitBtn = formLogin.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const resp = await apiFetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: document.getElementById("login-email").value.trim(),
+        password: document.getElementById("login-password").value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    setSession(data.token, data.user);
+    afficherProfil();
+    hideAuthScreen();
+    formLogin.reset();
+  } catch (err) {
+    afficherErreurAuth(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+formRegister.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  authErrorEl.classList.add("hidden");
+  const submitBtn = formRegister.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  try {
+    const resp = await apiFetch("/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nom: document.getElementById("register-nom").value.trim(),
+        email: document.getElementById("register-email").value.trim(),
+        password: document.getElementById("register-password").value,
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    setSession(data.token, data.user);
+    afficherProfil();
+    hideAuthScreen();
+    formRegister.reset();
+  } catch (err) {
+    afficherErreurAuth(err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+btnLogout.addEventListener("click", async () => {
+  try {
+    await apiFetch("/auth/logout", { method: "POST" });
+  } catch {
+    // best-effort : la déconnexion est de toute façon gérée côté client
+  }
+  clearSession();
+  showAuthScreen();
+  closeAllSheets();
+});
+
+async function verifierSession() {
+  if (!getToken()) {
+    showAuthScreen();
+    return;
+  }
+  // Affichage optimiste depuis le cache local (évite un flash de l'écran de
+  // connexion) pendant la vérification en arrière-plan du token auprès du serveur.
+  afficherProfil();
+  hideAuthScreen();
+  try {
+    const resp = await apiFetch("/auth/me");
+    if (!resp.ok) throw new Error("session invalide");
+    const user = await resp.json();
+    currentUser = user;
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    afficherProfil();
+    hideAuthScreen();
+  } catch {
+    clearSession();
+    showAuthScreen();
+  }
+}
+
+verifierSession();
 
 const TYPE_META = {
   eboulement: { emoji: "🪨", label: "Éboulement" },
@@ -254,7 +406,7 @@ const btnPointsPratiquesToggle = document.getElementById("btn-points-pratiques-t
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
-const SHEETS = ["itineraire", "suggestions", "historique", "signalement"];
+const SHEETS = ["itineraire", "suggestions", "historique", "signalement", "profil"];
 
 function closeAllSheets() {
   for (const name of SHEETS) {
@@ -889,7 +1041,7 @@ function renderAllSignalements() {
   for (const s of lastKnownSignalements) {
     const meta = TYPE_META[s.type] || TYPE_META.autre;
     const expireDate = new Date(s.expire_at).toLocaleDateString("fr-FR");
-    const estProprietaire = s.createur_id && s.createur_id === USER_ID;
+    const estProprietaire = currentUser && s.user_id === currentUser.id;
     const popup = `
       <strong>${meta.emoji} ${meta.label}</strong><br>
       ${s.description ? `${s.description}<br>` : ""}
@@ -919,10 +1071,7 @@ function renderAllSignalements() {
 }
 
 async function supprimerSignalement(id) {
-  const resp = await apiFetch(
-    `/signalements/${id}?createur_id=${encodeURIComponent(USER_ID)}`,
-    { method: "DELETE" }
-  );
+  const resp = await apiFetch(`/signalements/${id}`, { method: "DELETE" });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   lastKnownSignalements = lastKnownSignalements.filter((s) => s.id !== Number(id));
   saveSignalementsCache(lastCenter.lat, lastCenter.lon, lastKnownSignalements);
@@ -1017,7 +1166,6 @@ async function syncPendingSignalements() {
           lon: entry.lon,
           type: entry.type,
           description: entry.description,
-          createur_id: entry.createur_id,
         }),
       });
 
@@ -1097,7 +1245,6 @@ btnMarquerFait.addEventListener("click", async () => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        user_id: USER_ID,
         itineraire_id: currentItineraireId,
       }),
     });
@@ -1120,7 +1267,7 @@ btnMarquerFait.addEventListener("click", async () => {
 
 async function fetchHistorique() {
   try {
-    const resp = await apiFetch(`/historique?user_id=${USER_ID}`);
+    const resp = await apiFetch(`/historique`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const entries = await resp.json();
 
@@ -1390,7 +1537,6 @@ formSignalement.addEventListener("submit", async (e) => {
     lon: signalementLatLng.lng,
     type: document.getElementById("type-signalement").value,
     description: description || null,
-    createur_id: USER_ID,
   };
 
   if (!navigator.onLine) {
@@ -1439,4 +1585,4 @@ formSignalement.addEventListener("submit", async (e) => {
 });
 
 fetchSignalementsProches(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
-fetchHistorique();
+if (getToken()) fetchHistorique();

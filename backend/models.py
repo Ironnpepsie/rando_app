@@ -17,6 +17,17 @@ from sqlalchemy.orm import relationship
 from database import Base
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    password_hash = Column(String, nullable=True)  # null si compte Google uniquement
+    nom = Column(String, nullable=False)
+    google_id = Column(String, unique=True, index=True, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class NiveauEnum(str, enum.Enum):
     facile = "facile"
     moyen = "moyen"
@@ -56,6 +67,7 @@ class Itineraire(Base):
     __tablename__ = "itineraires"
 
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     point_depart_lat = Column(Float, nullable=False)
     point_depart_lon = Column(Float, nullable=False)
     duree_dispo = Column(Float, nullable=False)  # heures
@@ -80,7 +92,7 @@ class Signalement(Base):
     type = Column(Enum(SignalementType), nullable=False)
     description = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)
-    createur_id = Column(String, nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     upvotes = Column(Integer, default=0)
     score_fiabilite = Column(Integer, default=1)
@@ -99,7 +111,7 @@ class RandoHistorique(Base):
     __tablename__ = "rando_historique"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     itineraire_id = Column(Integer, ForeignKey("itineraires.id"), nullable=False)
     date_realisation = Column(DateTime, default=datetime.utcnow)
     notes = Column(Text, nullable=True)

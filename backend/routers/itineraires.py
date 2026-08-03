@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+import auth
 import models
 import schemas
 from database import get_db
@@ -11,7 +12,11 @@ router = APIRouter(prefix="/itineraires", tags=["itineraires"])
 
 
 @router.post("/generer", response_model=schemas.ItineraireOut)
-def generer_itineraire(payload: schemas.ItineraireGenererRequest, db: Session = Depends(get_db)):
+def generer_itineraire(
+    payload: schemas.ItineraireGenererRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     try:
         resultat = routing_client.generer_itineraire_rando(
             lat=payload.point_depart_lat,
@@ -26,6 +31,7 @@ def generer_itineraire(payload: schemas.ItineraireGenererRequest, db: Session = 
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     itineraire = models.Itineraire(
+        user_id=current_user.id,
         point_depart_lat=payload.point_depart_lat,
         point_depart_lon=payload.point_depart_lon,
         duree_dispo=payload.duree_dispo,

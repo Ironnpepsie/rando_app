@@ -1,9 +1,36 @@
 from datetime import datetime
 from typing import Optional, Any
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from models import NiveauEnum, ModeItineraireEnum, SignalementType, SignalementStatut
+
+
+# --- Auth / User ---
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: EmailStr
+    nom: str
+    created_at: datetime
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    nom: str = Field(min_length=1)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user: UserOut
 
 
 # --- Itineraire ---
@@ -32,6 +59,7 @@ class ItineraireOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    user_id: Optional[int] = None
     point_depart_lat: float
     point_depart_lon: float
     duree_dispo: float
@@ -69,7 +97,6 @@ class SignalementCreate(BaseModel):
     type: SignalementType
     description: Optional[str] = None
     photo_url: Optional[str] = None
-    createur_id: Optional[str] = None
 
 
 class SignalementOut(BaseModel):
@@ -81,7 +108,7 @@ class SignalementOut(BaseModel):
     type: SignalementType
     description: Optional[str] = None
     photo_url: Optional[str] = None
-    createur_id: Optional[str] = None
+    user_id: int
     created_at: datetime
     upvotes: int
     score_fiabilite: int
@@ -92,7 +119,6 @@ class SignalementOut(BaseModel):
 # --- RandoHistorique ---
 
 class RandoHistoriqueCreate(BaseModel):
-    user_id: str
     itineraire_id: int
     notes: Optional[str] = None
 
@@ -101,7 +127,7 @@ class RandoHistoriqueOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    user_id: str
+    user_id: int
     itineraire_id: int
     date_realisation: datetime
     notes: Optional[str] = None

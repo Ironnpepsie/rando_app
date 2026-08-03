@@ -1,4 +1,4 @@
-const CACHE_NAME = "randoapp-static-v3";
+const CACHE_NAME = "randoapp-static-v4";
 
 const STATIC_ASSETS = [
   "./",

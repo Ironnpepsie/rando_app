@@ -3,6 +3,7 @@ import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+import auth
 import models
 import schemas
 from database import get_db
@@ -21,8 +22,12 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 
 
 @router.post("", response_model=schemas.SignalementOut)
-def creer_signalement(payload: schemas.SignalementCreate, db: Session = Depends(get_db)):
-    signalement = models.Signalement(**payload.model_dump())
+def creer_signalement(
+    payload: schemas.SignalementCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    signalement = models.Signalement(**payload.model_dump(), user_id=current_user.id)
     db.add(signalement)
     db.commit()
     db.refresh(signalement)
@@ -55,12 +60,16 @@ def signalements_proches(
 
 
 @router.delete("/{signalement_id}", status_code=204)
-def supprimer_signalement(signalement_id: int, createur_id: str, db: Session = Depends(get_db)):
+def supprimer_signalement(
+    signalement_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     signalement = db.get(models.Signalement, signalement_id)
     if signalement is None:
         raise HTTPException(status_code=404, detail="Signalement introuvable")
 
-    if signalement.createur_id != createur_id:
+    if signalement.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="Vous n'êtes pas l'auteur de ce signalement")
 
     db.delete(signalement)
@@ -68,7 +77,11 @@ def supprimer_signalement(signalement_id: int, createur_id: str, db: Session = D
 
 
 @router.post("/{signalement_id}/confirmer", response_model=schemas.SignalementOut)
-def confirmer_signalement(signalement_id: int, db: Session = Depends(get_db)):
+def confirmer_signalement(
+    signalement_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
     signalement = db.get(models.Signalement, signalement_id)
     if signalement is None:
         raise HTTPException(status_code=404, detail="Signalement introuvable")
