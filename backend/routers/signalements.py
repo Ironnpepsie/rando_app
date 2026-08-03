@@ -54,6 +54,19 @@ def signalements_proches(
     return resultats
 
 
+@router.delete("/{signalement_id}", status_code=204)
+def supprimer_signalement(signalement_id: int, createur_id: str, db: Session = Depends(get_db)):
+    signalement = db.get(models.Signalement, signalement_id)
+    if signalement is None:
+        raise HTTPException(status_code=404, detail="Signalement introuvable")
+
+    if signalement.createur_id != createur_id:
+        raise HTTPException(status_code=403, detail="Vous n'êtes pas l'auteur de ce signalement")
+
+    db.delete(signalement)
+    db.commit()
+
+
 @router.post("/{signalement_id}/confirmer", response_model=schemas.SignalementOut)
 def confirmer_signalement(signalement_id: int, db: Session = Depends(get_db)):
     signalement = db.get(models.Signalement, signalement_id)

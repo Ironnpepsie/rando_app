@@ -837,11 +837,13 @@ function renderAllSignalements() {
   for (const s of lastKnownSignalements) {
     const meta = TYPE_META[s.type] || TYPE_META.autre;
     const expireDate = new Date(s.expire_at).toLocaleDateString("fr-FR");
+    const estProprietaire = s.createur_id && s.createur_id === USER_ID;
     const popup = `
       <strong>${meta.emoji} ${meta.label}</strong><br>
       ${s.description ? `${s.description}<br>` : ""}
       👍 ${s.upvotes} confirmation(s)<br>
       Expire le ${expireDate}
+      ${estProprietaire ? `<br><button type="button" class="btn-supprimer-signalement" data-id="${s.id}">🗑️ Supprimer</button>` : ""}
     `;
     L.marker([s.lat, s.lon], { icon: signalementIcon(s.type, false) })
       .bindPopup(popup)
@@ -854,6 +856,7 @@ function renderAllSignalements() {
       <strong>${meta.emoji} ${meta.label}</strong><br>
       ${p.description ? `${p.description}<br>` : ""}
       ⏳ En attente d'envoi (hors-ligne)
+      <br><button type="button" class="btn-supprimer-signalement" data-temp-id="${p.tempId}">🗑️ Supprimer</button>
     `;
     L.marker([p.lat, p.lon], { icon: signalementIcon(p.type, true) })
       .bindPopup(popup)
@@ -862,6 +865,40 @@ function renderAllSignalements() {
 
   updatePendingUI();
 }
+
+async function supprimerSignalement(id) {
+  const resp = await apiFetch(
+    `/signalements/${id}?createur_id=${encodeURIComponent(USER_ID)}`,
+    { method: "DELETE" }
+  );
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  lastKnownSignalements = lastKnownSignalements.filter((s) => s.id !== Number(id));
+  saveSignalementsCache(lastCenter.lat, lastCenter.lon, lastKnownSignalements);
+}
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".btn-supprimer-signalement");
+  if (!btn) return;
+
+  if (btn.dataset.tempId) {
+    removePendingSignalement(btn.dataset.tempId);
+    map.closePopup();
+    renderAllSignalements();
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Suppression...";
+  try {
+    await supprimerSignalement(btn.dataset.id);
+    map.closePopup();
+    renderAllSignalements();
+  } catch (err) {
+    console.error("Erreur suppression signalement :", err);
+    btn.disabled = false;
+    btn.textContent = "🗑️ Supprimer";
+  }
+});
 
 async function fetchSignalementsProches(lat, lon) {
   lastCenter = { lat, lon };
@@ -928,6 +965,7 @@ async function syncPendingSignalements() {
           lon: entry.lon,
           type: entry.type,
           description: entry.description,
+          createur_id: entry.createur_id,
         }),
       });
 
@@ -1297,6 +1335,7 @@ formSignalement.addEventListener("submit", async (e) => {
     lon: signalementLatLng.lng,
     type: document.getElementById("type-signalement").value,
     description: description || null,
+    createur_id: USER_ID,
   };
 
   if (!navigator.onLine) {

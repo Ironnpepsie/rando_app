@@ -80,6 +80,7 @@ class Signalement(Base):
     type = Column(Enum(SignalementType), nullable=False)
     description = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)
+    createur_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     upvotes = Column(Integer, default=0)
     score_fiabilite = Column(Integer, default=1)

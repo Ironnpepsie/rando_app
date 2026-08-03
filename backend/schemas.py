@@ -69,6 +69,7 @@ class SignalementCreate(BaseModel):
     type: SignalementType
     description: Optional[str] = None
     photo_url: Optional[str] = None
+    createur_id: Optional[str] = None
 
 
 class SignalementOut(BaseModel):
@@ -80,6 +81,7 @@ class SignalementOut(BaseModel):
     type: SignalementType
     description: Optional[str] = None
     photo_url: Optional[str] = None
+    createur_id: Optional[str] = None
     created_at: datetime
     upvotes: int
     score_fiabilite: int

@@ -29,10 +29,21 @@ def _migrer_colonnes_itineraires():
         conn.commit()
 
 
+def _migrer_colonnes_signalements():
+    """Ajoute la colonne createur_id (identité anonyme du créateur) si la base
+    a été créée avant l'ajout de la suppression de signalement par son auteur."""
+    with engine.connect() as conn:
+        colonnes = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(signalements)")}
+        if "createur_id" not in colonnes:
+            conn.exec_driver_sql("ALTER TABLE signalements ADD COLUMN createur_id VARCHAR")
+        conn.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrer_colonnes_itineraires()
+    _migrer_colonnes_signalements()
     yield
 
 
