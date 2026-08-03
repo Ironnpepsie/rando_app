@@ -94,6 +94,24 @@ function meteoInfo(code) {
   return WMO_META[code] || { emoji: "❓", label: "Conditions inconnues" };
 }
 
+// Anime la valeur affichée dans un stat-card de 0 jusqu'à endValue (ease-out).
+function animateCountUp(el, endValue, { duration = 700, decimals = 0 } = {}) {
+  const startTime = performance.now();
+
+  function format(value) {
+    return decimals > 0 ? value.toFixed(decimals) : Math.round(value).toString();
+  }
+
+  function tick(now) {
+    const progress = Math.min((now - startTime) / duration, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    el.textContent = format(endValue * eased);
+    if (progress < 1) requestAnimationFrame(tick);
+  }
+
+  requestAnimationFrame(tick);
+}
+
 const map = L.map("map").setView(DEFAULT_CENTER, 13);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
@@ -126,13 +144,35 @@ btnMeteoLayersToggle.addEventListener("click", () => {
   meteoLayersPopover.classList.toggle("hidden");
 });
 
-function wireCoucheToggle(checkbox, layer) {
-  checkbox.addEventListener("change", () => {
-    if (checkbox.checked) {
-      layer.addTo(map);
+// Active/désactive une couche avec un fondu d'opacité doux plutôt qu'un affichage brutal.
+function fadeTileLayer(layer, active) {
+  if (active) {
+    layer.addTo(map);
+    // Le conteneur n'existe qu'une fois la couche ajoutée à la carte (première activation).
+    const container = layer.getContainer ? layer.getContainer() : null;
+    if (container) {
+      container.style.transition = "none";
+      container.style.opacity = "0";
+      requestAnimationFrame(() => {
+        container.style.transition = "opacity 0.35s ease";
+        container.style.opacity = "1";
+      });
+    }
+  } else {
+    const container = layer.getContainer ? layer.getContainer() : null;
+    if (container) {
+      container.style.transition = "opacity 0.25s ease";
+      container.style.opacity = "0";
+      setTimeout(() => map.removeLayer(layer), 250);
     } else {
       map.removeLayer(layer);
     }
+  }
+}
+
+function wireCoucheToggle(checkbox, layer) {
+  checkbox.addEventListener("change", () => {
+    fadeTileLayer(layer, checkbox.checked);
   });
 }
 
@@ -621,11 +661,23 @@ const POINTS_PRATIQUES_META = {
 function pointPratiqueIcon(type) {
   const meta = POINTS_PRATIQUES_META[type] || { emoji: "❓", label: "Point pratique" };
   return L.divIcon({
-    html: `<div class="map-badge"><span>${meta.emoji}</span></div>`,
+    html: `<div class="map-badge map-badge-anim"><span>${meta.emoji}</span></div>`,
     className: "",
     iconSize: [32, 32],
     iconAnchor: [16, 16],
   });
+}
+
+// Fait disparaître en fondu les marqueurs d'un layerGroup avant de le retirer de la carte.
+function fadeOutMarkerLayer(layerGroup, delay = 220) {
+  layerGroup.eachLayer((l) => {
+    const el = l.getElement ? l.getElement() : null;
+    if (el) {
+      el.style.transition = `opacity ${delay}ms ease`;
+      el.style.opacity = "0";
+    }
+  });
+  setTimeout(() => map.removeLayer(layerGroup), delay);
 }
 
 async function fetchPointsPratiques(traceCoords) {
@@ -662,7 +714,7 @@ btnPointsPratiquesToggle.addEventListener("click", () => {
     pointsPratiquesLayer.addTo(map);
     fetchPointsPratiques(currentTraceCoords);
   } else {
-    map.removeLayer(pointsPratiquesLayer);
+    fadeOutMarkerLayer(pointsPratiquesLayer);
   }
 });
 
@@ -1203,9 +1255,12 @@ function chargerSuggestion(suggestion) {
   const traceCoords = suggestion.trace_geojson.features?.[0]?.geometry?.coordinates;
   currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat]) => [lat, lon]) : null;
 
-  resDistanceEl.textContent = suggestion.distance_km.toFixed(2);
-  resDeniveleEl.textContent =
-    suggestion.denivele_m != null ? Math.round(suggestion.denivele_m) : "?";
+  animateCountUp(resDistanceEl, suggestion.distance_km, { decimals: 2 });
+  if (suggestion.denivele_m != null) {
+    animateCountUp(resDeniveleEl, suggestion.denivele_m);
+  } else {
+    resDeniveleEl.textContent = "?";
+  }
   resultatEl.classList.remove("hidden");
 
   // Pas d'itinéraire persisté en base pour une suggestion Overpass : "Marquer comme fait" n'a pas de sens ici.
@@ -1300,8 +1355,8 @@ formItineraire.addEventListener("submit", async (e) => {
     const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
     currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat, ele]) => [lat, lon, ele]) : null;
 
-    resDistanceEl.textContent = data.distance_km.toFixed(2);
-    resDeniveleEl.textContent = Math.round(data.denivele_m);
+    animateCountUp(resDistanceEl, data.distance_km, { decimals: 2 });
+    animateCountUp(resDeniveleEl, data.denivele_m);
     resultatEl.classList.remove("hidden");
 
     fetchSignalementsProches(departLatLng.lat, departLatLng.lng);

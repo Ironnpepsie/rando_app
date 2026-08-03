@@ -1,4 +1,4 @@
-const CACHE_NAME = "randoapp-static-v1";
+const CACHE_NAME = "randoapp-static-v3";
 
 const STATIC_ASSETS = [
   "./",
@@ -6,9 +6,11 @@ const STATIC_ASSETS = [
   "./style.css",
   "./app.js",
   "./manifest.json",
+  "./favicon.svg",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
+  "./icons/apple-touch-icon.png",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
   "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
 ];

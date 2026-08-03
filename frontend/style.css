@@ -126,6 +126,21 @@ html, body {
   opacity: 0.9;
 }
 
+@keyframes badge-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.map-badge-anim {
+  animation: badge-pop-in 0.25s ease-out;
+}
+
 /* ---------- Barre de recherche de lieu ---------- */
 
 #search-bar-container {
@@ -268,12 +283,22 @@ html, body {
   border-radius: 16px 16px 0 0;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.6);
   max-height: 62vh;
-  display: none;
+  display: flex;
   flex-direction: column;
+  opacity: 0;
+  transform: translateY(16px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.28s;
 }
 
 .sheet.open {
-  display: flex;
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .sheet-header {
@@ -428,15 +453,28 @@ button {
   background: var(--card-2);
   color: var(--text);
   min-height: 44px;
+  transition: transform 0.15s ease, background-color 0.15s ease,
+    border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 
 button:active:not(:disabled) {
   background: var(--card-3);
+  transform: scale(0.96);
 }
 
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+@media (hover: hover) {
+  button:hover:not(:disabled):not(.active):not(.btn-supprimer-signalement) {
+    background: var(--card-3);
+  }
+
+  .btn-supprimer-signalement:hover:not(:disabled) {
+    background: rgba(248, 113, 113, 0.22);
+  }
 }
 
 /* CTA principaux : soumission de formulaire = action orange bien visible */
@@ -451,6 +489,14 @@ button[type="submit"]:active:not(:disabled),
 #btn-demarrer-nav:active:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+@media (hover: hover) {
+  button[type="submit"]:hover:not(:disabled),
+  #btn-demarrer-nav:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
 }
 
 button[type="submit"]:disabled {
@@ -557,6 +603,24 @@ button[type="submit"]:disabled {
 .meteo .msg-error {
   margin-top: 8px;
   font-weight: 700;
+}
+
+#meteo-alert {
+  overflow: hidden;
+  max-height: 60px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease,
+    margin-top 0.3s ease;
+}
+
+#meteo-alert.hidden {
+  display: block !important;
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
 }
 
 .msg {
@@ -706,6 +770,7 @@ button[type="submit"]:disabled {
   background: var(--card) !important;
   color: var(--text) !important;
   border-color: var(--border) !important;
+  transition: background-color 0.15s ease;
 }
 
 .leaflet-control-zoom a:hover {
