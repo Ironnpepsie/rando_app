@@ -101,6 +101,8 @@ def generer_itineraire_rando(
         body = {
             "coordinates": [[lon, lat], [arrivee_lon, arrivee_lat]],
             "elevation": True,
+            "instructions": True,
+            "language": "fr",
         }
     else:
         if not ORS_API_KEY:
@@ -108,6 +110,8 @@ def generer_itineraire_rando(
         body = {
             "coordinates": [[lon, lat]],
             "elevation": True,
+            "instructions": True,
+            "language": "fr",
             "options": {
                 "round_trip": {
                     "length": distance_cible_m,

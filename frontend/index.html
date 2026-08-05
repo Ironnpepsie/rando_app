@@ -77,6 +77,7 @@
     <button type="button" id="btn-gps-toggle" class="map-fab" aria-label="Suivi GPS en direct">🛰️</button>
     <button type="button" id="btn-meteo-layers-toggle" class="map-fab" aria-label="Couches météo">🌦️</button>
     <button type="button" id="btn-points-pratiques-toggle" class="map-fab" aria-label="Points pratiques (refuges, points d'eau, abris)">🏠</button>
+    <button type="button" id="btn-rotation-toggle" class="map-fab hidden" aria-label="Rotation de la carte selon le cap">🧭</button>
   </div>
 
   <div id="meteo-layers-popover" class="popover hidden">
@@ -95,6 +96,14 @@
   <div id="gps-error-banner" class="picking-banner picking-banner-error hidden">
     <span id="gps-error-text"></span>
     <button type="button" id="btn-gps-error-close" aria-label="Fermer">✕</button>
+  </div>
+
+  <div id="nav-instruction-banner" class="nav-instruction-banner hidden">
+    <span id="nav-instruction-icone" class="nav-instruction-icone"></span>
+    <div class="nav-instruction-texte">
+      <span id="nav-instruction-consigne" class="nav-instruction-consigne"></span>
+      <span id="nav-instruction-distance" class="nav-instruction-distance"></span>
+    </div>
   </div>
 
   <div id="sheet-itineraire" class="sheet">

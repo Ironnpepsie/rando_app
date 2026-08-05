@@ -392,6 +392,9 @@ let arriveeLatLng = null;
 let signalementLatLng = null;
 let currentItineraireId = null;
 let currentTraceCoords = null; // [[lat, lon], ...] du dernier itinéraire généré, pour la distance restante GPS
+// Instructions turn-by-turn ORS (properties.segments[0].steps), null si non disponibles
+// (suggestion Overpass, ou fallback dev sans clé ORS_API_KEY).
+let currentSteps = null;
 
 const arriveeIcon = L.divIcon({
   html: '<span style="font-size:26px;">🏁</span>',
@@ -449,6 +452,11 @@ const btnGpsToggle = document.getElementById("btn-gps-toggle");
 const gpsErrorBanner = document.getElementById("gps-error-banner");
 const gpsErrorText = document.getElementById("gps-error-text");
 const btnGpsErrorClose = document.getElementById("btn-gps-error-close");
+const navInstructionBanner = document.getElementById("nav-instruction-banner");
+const navInstructionIconeEl = document.getElementById("nav-instruction-icone");
+const navInstructionConsigneEl = document.getElementById("nav-instruction-consigne");
+const navInstructionDistanceEl = document.getElementById("nav-instruction-distance");
+const btnRotationToggle = document.getElementById("btn-rotation-toggle");
 const photosGalerieEl = document.getElementById("photos-galerie");
 const btnChercherSuggestions = document.getElementById("btn-chercher-suggestions");
 const suggestionsMsgEl = document.getElementById("suggestions-msg");
@@ -621,9 +629,21 @@ const gpsIcon = L.divIcon({
   iconAnchor: [9, 9],
 });
 
+// Flèche orientée façon Google Maps/Waze, utilisée à la place du simple point pendant
+// la navigation. La rotation de .gps-puck-arrow est appliquée directement en DOM
+// (plutôt que de recréer l'icône à chaque position) pour rester fluide et sans flash.
+const gpsArrowIcon = L.divIcon({
+  html: '<div class="gps-puck"><div class="gps-puck-arrow"></div></div>',
+  className: "",
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
+});
+
 let gpsWatchId = null;
 let gpsMarker = null;
 let gpsActive = false;
+let gpsMarkerModeNav = false; // dernier mode (icône simple / flèche) appliqué au marqueur
+let dernierCapAffiche = null; // dernier cap appliqué à la flèche (évite les à-coups au 1er fix)
 
 function haversineMetres(lat1, lon1, lat2, lon2) {
   const R = 6371000;
@@ -634,6 +654,20 @@ function haversineMetres(lat1, lon1, lat2, lon2) {
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+// Cap initial (bearing) en degrés, 0-360° depuis le nord, entre deux points GPS.
+// Utilisé comme repli quand l'API Geolocation ne fournit pas de heading fiable.
+function calculerCapDegres(lat1, lon1, lat2, lon2) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const toDeg = (r) => (r * 180) / Math.PI;
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const deltaLambda = toRad(lon2 - lon1);
+  const y = Math.sin(deltaLambda) * Math.cos(phi2);
+  const x =
+    Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
 // Trouve le point du tracé le plus proche de la position donnée (index + distance).
@@ -709,13 +743,45 @@ function showGpsError(text) {
 
 btnGpsErrorClose.addEventListener("click", () => gpsErrorBanner.classList.add("hidden"));
 
+// Applique/actualise l'icône flèche orientée du marqueur GPS pendant la navigation
+// (icône simple sinon), et fait tourner la flèche selon le cap réel (heading natif de
+// l'API Geolocation si dispo, sinon cap calculé entre les deux dernières positions).
+function mettreAJourIconeEtCapGps(latlng, latlngPrecedent, position) {
+  if (gpsMarkerModeNav !== navigationActive) {
+    gpsMarker.setIcon(navigationActive ? gpsArrowIcon : gpsIcon);
+    gpsMarkerModeNav = navigationActive;
+    dernierCapAffiche = null;
+  }
+  if (!navigationActive) return;
+
+  let cap = null;
+  const headingNatif = position.coords.heading;
+  if (typeof headingNatif === "number" && !isNaN(headingNatif)) {
+    cap = headingNatif;
+  } else if (latlngPrecedent && haversineMetres(latlngPrecedent.lat, latlngPrecedent.lng, latlng.lat, latlng.lng) >= 2) {
+    // Sous ~2m, la position peut juste "trembler" sur place (bruit GPS) : on garde le
+    // dernier cap connu plutôt que de faire tourner la flèche au hasard.
+    cap = calculerCapDegres(latlngPrecedent.lat, latlngPrecedent.lng, latlng.lat, latlng.lng);
+  }
+
+  if (cap != null) {
+    dernierCapAffiche = cap;
+    const arrowEl = gpsMarker.getElement()?.querySelector(".gps-puck-arrow");
+    if (arrowEl) arrowEl.style.transform = `rotate(${cap}deg)`;
+  }
+}
+
 function onGpsPosition(position) {
   const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
+  const latlngPrecedent = gpsMarker ? gpsMarker.getLatLng() : null;
+  const premiereFoisEnNavigation = navigationActive && gpsMarkerModeNav !== navigationActive;
+
   if (gpsMarker) {
     gpsMarker.setLatLng(latlng);
   } else {
     gpsMarker = L.marker(latlng, { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map);
   }
+  mettreAJourIconeEtCapGps(latlng, latlngPrecedent, position);
 
   if (navigationActive) {
     traceReellePoints.push({
@@ -762,7 +828,13 @@ function onGpsPosition(position) {
       }
       horsTraceActif = horsTrace;
 
-      map.setView(latlng, map.getZoom(), { animate: false });
+      mettreAJourInstructionNavigation(idxProche);
+
+      // Zoom serré façon appli de nav dès le passage en navigation, mais on respecte
+      // ensuite un zoom manuel de l'utilisateur (on ne le force plus sur les ticks suivants).
+      const zoomCible = premiereFoisEnNavigation ? ZOOM_NAVIGATION : map.getZoom();
+      map.setView(latlng, zoomCible, { animate: premiereFoisEnNavigation });
+      appliquerRotationCarte();
     }
   }
 }
@@ -816,6 +888,61 @@ btnGpsToggle.addEventListener("click", () => {
 // ---------- Mode navigation guidée ----------
 
 const SEUIL_HORS_TRACE_M = 80;
+const ZOOM_NAVIGATION = 17; // zoom serré "sur le sentier" appliqué au démarrage de la navigation
+const SEUIL_INSTRUCTION_IMMINENTE_M = 60; // sous ce seuil, on annonce déjà la manœuvre suivante
+
+// Type codes ORS/OSRM standard (properties.segments[].steps[].type) -> icône + libellé FR.
+const TYPES_INSTRUCTION = {
+  0: { icone: "⬅️", libelle: "Le sentier tourne à gauche" },
+  1: { icone: "➡️", libelle: "Le sentier tourne à droite" },
+  2: { icone: "↩️", libelle: "Le sentier tourne fortement à gauche" },
+  3: { icone: "↪️", libelle: "Le sentier tourne fortement à droite" },
+  4: { icone: "↖️", libelle: "Le sentier oblique légèrement à gauche" },
+  5: { icone: "↗️", libelle: "Le sentier oblique légèrement à droite" },
+  6: { icone: "⬆️", libelle: "Continuez tout droit" },
+  7: { icone: "🔄", libelle: "Prenez le rond-point" },
+  8: { icone: "🔄", libelle: "Sortez du rond-point" },
+  9: { icone: "↩️", libelle: "Faites demi-tour" },
+  10: { icone: "🏁", libelle: "Vous arrivez à destination" },
+  11: { icone: "🚶", libelle: "Départ" },
+  12: { icone: "⬅️", libelle: "Restez à gauche" },
+  13: { icone: "➡️", libelle: "Restez à droite" },
+};
+
+function afficherInstructionNavigation(step, distanceM, imminente) {
+  const meta = TYPES_INSTRUCTION[step.type] || { icone: "➜", libelle: step.instruction };
+  navInstructionIconeEl.textContent = meta.icone;
+  navInstructionConsigneEl.textContent = meta.libelle;
+  navInstructionDistanceEl.textContent = `${imminente ? "dans" : "sur"} ${Math.round(distanceM)} m`;
+  navInstructionBanner.classList.remove("hidden");
+}
+
+// Détermine l'étape ORS en cours (celle dont l'intervalle way_points contient idxProche) et
+// affiche soit sa propre consigne + distance restante dans cette étape (loin de la prochaine
+// manœuvre), soit la consigne de l'étape SUIVANTE quand on s'en approche (< 60m).
+function mettreAJourInstructionNavigation(idxProche) {
+  if (!currentSteps || currentSteps.length === 0) {
+    navInstructionBanner.classList.add("hidden");
+    return;
+  }
+
+  const idxEtapeActuelle = currentSteps.findIndex(
+    (s) => idxProche >= s.way_points[0] && idxProche < s.way_points[1]
+  );
+  const etapeActuelle =
+    idxEtapeActuelle >= 0 ? currentSteps[idxEtapeActuelle] : currentSteps[currentSteps.length - 1];
+  const idxFinEtape = etapeActuelle.way_points[1];
+  const distanceRestanteM = distanceEntreIndicesSurTrace(idxProche, idxFinEtape);
+
+  if (distanceRestanteM <= SEUIL_INSTRUCTION_IMMINENTE_M) {
+    const etapeSuivante = currentSteps[idxEtapeActuelle + 1];
+    if (etapeSuivante) {
+      afficherInstructionNavigation(etapeSuivante, distanceRestanteM, true);
+      return;
+    }
+  }
+  afficherInstructionNavigation(etapeActuelle, distanceRestanteM, false);
+}
 
 let navigationActive = false;
 let traceParcourueLine = null;
@@ -830,6 +957,7 @@ function demarrerNavigation() {
   btnDemarrerNav.classList.add("hidden");
   btnTerminerNav.classList.remove("hidden");
   terminerNavMsgEl.classList.add("hidden");
+  btnRotationToggle.classList.remove("hidden");
   traceParcourueLine = L.polyline([], { color: "#999", weight: 5, opacity: 0.85 }).addTo(map);
   if (!gpsActive) startGpsTracking();
 }
@@ -839,6 +967,7 @@ function arreterNavigation() {
   navigationActive = false;
   btnDemarrerNav.classList.remove("hidden");
   btnTerminerNav.classList.add("hidden");
+  btnRotationToggle.classList.add("hidden");
   if (traceParcourueLine) {
     traceParcourueLine.remove();
     traceParcourueLine = null;
@@ -847,9 +976,71 @@ function arreterNavigation() {
   rowTempsRestantEl.classList.add("hidden");
   rowHeureArriveeEl.classList.add("hidden");
   gpsErrorBanner.classList.add("hidden");
+  navInstructionBanner.classList.add("hidden");
+  desactiverRotationCarte();
   horsTraceActif = false;
   stopGpsTracking();
 }
+
+// ---------- Rotation de la carte selon le cap (façon Waze), en option ----------
+
+let rotationCapActive = false;
+
+function desactiverInteractionsCarte() {
+  map.dragging.disable();
+  map.doubleClickZoom.disable();
+  map.scrollWheelZoom.disable();
+  map.touchZoom.disable();
+  map.boxZoom.disable();
+  map.keyboard.disable();
+}
+
+function reactiverInteractionsCarte() {
+  map.dragging.enable();
+  map.doubleClickZoom.enable();
+  map.scrollWheelZoom.enable();
+  map.touchZoom.enable();
+  map.boxZoom.enable();
+  map.keyboard.enable();
+}
+
+// Leaflet ne gère pas nativement la rotation (pas de plugin dédié ici) : on tourne #map
+// dans son ensemble via CSS, puis on contre-tourne les contrôles (zoom, attribution) pour
+// qu'ils restent lisibles et fixes à l'écran. La flèche GPS se retrouve automatiquement
+// "à l'endroit" par composition des deux rotations (carte -cap + flèche +cap = 0), sans
+// code supplémentaire. Comme la rotation CSS désynchronise le calcul pixel<->latlng
+// interne de Leaflet (drag, clic pour choisir un point...), les interactions manuelles
+// sont désactivées tant que ce mode est actif.
+function appliquerRotationCarte() {
+  if (!rotationCapActive || dernierCapAffiche == null) return;
+  mapEl.style.transform = `rotate(${-dernierCapAffiche}deg)`;
+  const controles = mapEl.querySelector(".leaflet-control-container");
+  if (controles) controles.style.transform = `rotate(${dernierCapAffiche}deg)`;
+}
+
+function activerRotationCarte() {
+  rotationCapActive = true;
+  btnRotationToggle.classList.add("active");
+  desactiverInteractionsCarte();
+  appliquerRotationCarte();
+}
+
+function desactiverRotationCarte() {
+  rotationCapActive = false;
+  btnRotationToggle.classList.remove("active");
+  mapEl.style.transform = "";
+  const controles = mapEl.querySelector(".leaflet-control-container");
+  if (controles) controles.style.transform = "";
+  reactiverInteractionsCarte();
+}
+
+btnRotationToggle.addEventListener("click", () => {
+  if (rotationCapActive) {
+    desactiverRotationCarte();
+  } else {
+    activerRotationCarte();
+  }
+});
 
 // Calcule les stats réelles (distance, dénivelé +/-, durée, vitesses) à partir
 // des positions GPS enregistrées pendant la navigation. Retourne null si trop
@@ -1684,6 +1875,7 @@ function chargerSuggestion(suggestion) {
 
   const traceCoords = suggestion.trace_geojson.features?.[0]?.geometry?.coordinates;
   currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat]) => [lat, lon]) : null;
+  currentSteps = null; // pas d'instructions turn-by-turn pour un sentier Overpass
 
   animateCountUp(resDistanceEl, suggestion.distance_km, { decimals: 2 });
   if (suggestion.denivele_m != null) {
@@ -1786,6 +1978,7 @@ formItineraire.addEventListener("submit", async (e) => {
 
     const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
     currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat, ele]) => [lat, lon, ele]) : null;
+    currentSteps = data.trace_geojson.features?.[0]?.properties?.segments?.[0]?.steps || null;
 
     animateCountUp(resDistanceEl, data.distance_km, { decimals: 2 });
     animateCountUp(resDeniveleEl, data.denivele_m);
