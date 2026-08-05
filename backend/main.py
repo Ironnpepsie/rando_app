@@ -11,7 +11,7 @@ from sqlalchemy import inspect
 
 import models
 from database import Base, engine
-from routers import auth, geocode, guide, historique, itineraires, meteo, photos, sentiers, signalements
+from routers import amis, auth, geocode, guide, historique, itineraires, meteo, photos, sentiers, signalements
 
 
 def _migrer_colonnes_itineraires():
@@ -52,6 +52,15 @@ def _migrer_colonnes_historique():
         conn.commit()
 
 
+def _migrer_colonnes_users():
+    """Ajoute la colonne photo de profil si la base a été créée avant son ajout."""
+    with engine.connect() as conn:
+        colonnes = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
+        if "photo_base64" not in colonnes:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN photo_base64 TEXT")
+        conn.commit()
+
+
 def _migrer_vers_comptes_utilisateurs():
     """Passage au système de comptes utilisateurs (JWT) : signalements et
     historique étaient liés à une identité anonyme localStorage (createur_id /
@@ -76,6 +85,7 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     _migrer_colonnes_itineraires()
     _migrer_colonnes_historique()
+    _migrer_colonnes_users()
     yield
 
 
@@ -97,6 +107,7 @@ app.include_router(guide.router)
 app.include_router(historique.router)
 app.include_router(sentiers.router)
 app.include_router(photos.router)
+app.include_router(amis.router)
 
 
 @app.get("/health")

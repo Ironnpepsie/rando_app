@@ -25,6 +25,9 @@ class User(Base):
     password_hash = Column(String, nullable=True)  # null si compte Google uniquement
     nom = Column(String, nullable=False)
     google_id = Column(String, unique=True, index=True, nullable=True)
+    # Photo de profil encodée en data URL base64 (data:image/...;base64,...), stockée
+    # directement en base pour l'instant : pas de service de stockage externe à ce stade.
+    photo_base64 = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -105,6 +108,21 @@ class Signalement(Base):
             duree = EXPIRATION_PAR_TYPE.get(type_, timedelta(days=7))
             kwargs["expire_at"] = datetime.utcnow() + duree
         super().__init__(**kwargs)
+
+
+class FriendshipStatusEnum(str, enum.Enum):
+    pending = "pending"
+    accepted = "accepted"
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # demandeur
+    friend_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)  # destinataire
+    status = Column(Enum(FriendshipStatusEnum), nullable=False, default=FriendshipStatusEnum.pending)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class RandoHistorique(Base):

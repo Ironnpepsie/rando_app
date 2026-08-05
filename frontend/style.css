@@ -1046,6 +1046,16 @@ button[type="submit"]:disabled {
   margin-bottom: 16px;
 }
 
+.profil-card-photo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.profil-identite {
+  min-width: 0;
+}
+
 .profil-nom {
   margin: 0 0 4px;
   font-size: 18px;
@@ -1056,6 +1066,148 @@ button[type="submit"]:disabled {
   margin: 0;
   font-size: 14px;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Photo de profil ---------- */
+
+.profil-photo-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+.profil-photo,
+.profil-photo-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--card-3);
+}
+
+.profil-photo-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+}
+
+.profil-photo-btn {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- Amis ---------- */
+
+.amis-liste {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.amis-liste:empty {
+  margin: 0;
+}
+
+.amis-liste-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.amis-liste-item.cliquable {
+  cursor: pointer;
+}
+
+.amis-liste-item.cliquable:active {
+  background: var(--card-3);
+}
+
+.ami-avatar,
+.ami-avatar-placeholder {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--border);
+  background: var(--card-3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.ami-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.ami-info .ami-nom {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.ami-info .ami-email {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ami-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.btn-mini {
+  width: auto;
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.btn-refaire {
+  margin-top: 8px;
+}
+
+.btn-mini-accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.btn-mini-accent:active:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
 }
 
 /* ---------- Écrans larges (tablette / desktop) ---------- */

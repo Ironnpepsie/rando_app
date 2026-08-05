@@ -262,12 +262,87 @@
       <button type="button" class="sheet-close" data-sheet="profil" aria-label="Fermer">✕</button>
     </div>
     <div class="sheet-body">
-      <div class="profil-card">
-        <p class="profil-nom" id="profil-nom"></p>
-        <p class="profil-email" id="profil-email"></p>
+      <div class="profil-card profil-card-photo">
+        <div class="profil-photo-wrap">
+          <img id="profil-photo" class="profil-photo hidden" alt="Photo de profil" />
+          <span id="profil-photo-placeholder" class="profil-photo-placeholder">🧑</span>
+          <button type="button" id="btn-changer-photo" class="profil-photo-btn" aria-label="Changer la photo de profil">📷</button>
+          <input type="file" id="input-photo-profil" accept="image/*" class="hidden" />
+        </div>
+        <div class="profil-identite">
+          <p class="profil-nom" id="profil-nom"></p>
+          <p class="profil-email" id="profil-email"></p>
+        </div>
       </div>
+      <p id="photo-profil-msg" class="msg hidden"></p>
       <button type="button" id="btn-voir-stats" class="btn-secondary">📊 Mes statistiques</button>
+      <button type="button" id="btn-voir-amis" class="btn-secondary">👥 Mes amis</button>
       <button type="button" id="btn-logout" class="btn-secondary">🚪 Se déconnecter</button>
+    </div>
+  </div>
+
+  <div id="sheet-amis" class="sheet">
+    <div class="sheet-header">
+      <button type="button" class="sheet-back" id="btn-amis-retour" aria-label="Retour au profil">←</button>
+      <h2>Mes amis</h2>
+      <button type="button" class="sheet-close" data-sheet="amis" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <label>
+        Rechercher un utilisateur
+        <input type="text" id="amis-recherche-input" placeholder="Nom ou email..." autocomplete="off" />
+      </label>
+      <ul id="amis-recherche-resultats" class="amis-liste hidden"></ul>
+
+      <h3 class="stats-records-titre hidden" id="amis-demandes-titre">Demandes reçues</h3>
+      <ul id="amis-demandes-liste" class="amis-liste"></ul>
+
+      <h3 class="stats-records-titre">Mes amis</h3>
+      <ul id="amis-liste" class="amis-liste"></ul>
+      <p id="amis-vide" class="coords hidden">Vous n'avez pas encore d'amis. Recherchez quelqu'un ci-dessus !</p>
+    </div>
+  </div>
+
+  <div id="sheet-ami-profil" class="sheet">
+    <div class="sheet-header">
+      <button type="button" class="sheet-back" id="btn-ami-profil-retour" aria-label="Retour aux amis">←</button>
+      <h2 id="ami-profil-titre">Profil</h2>
+      <button type="button" class="sheet-close" data-sheet="ami-profil" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="profil-card profil-card-photo">
+        <div class="profil-photo-wrap">
+          <img id="ami-profil-photo" class="profil-photo hidden" alt="Photo de profil" />
+          <span id="ami-profil-photo-placeholder" class="profil-photo-placeholder">🧑</span>
+        </div>
+        <div class="profil-identite">
+          <p class="profil-nom" id="ami-profil-nom"></p>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value"><span id="ami-stats-distance-totale"></span><span class="stat-unit">km</span></span>
+          <span class="stat-label">Distance totale</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value"><span id="ami-stats-denivele-cumule"></span><span class="stat-unit">m</span></span>
+          <span class="stat-label">Dénivelé cumulé</span>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value" id="ami-stats-nb-sorties"></span>
+          <span class="stat-label">Sorties</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="ami-stats-duree-totale"></span>
+          <span class="stat-label">Temps total</span>
+        </div>
+      </div>
+      <h3 class="stats-records-titre">Historique des randos</h3>
+      <ul id="ami-historique-liste" class="historique-liste"></ul>
+      <p id="ami-historique-vide" class="coords hidden">Aucune rando enregistrée par cet ami pour l'instant.</p>
+      <p id="ami-refaire-msg" class="msg hidden"></p>
     </div>
   </div>
 

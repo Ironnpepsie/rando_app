@@ -86,6 +86,31 @@ const statsDureeTotaleEl = document.getElementById("stats-duree-totale");
 const statsRecordDistanceEl = document.getElementById("stats-record-distance");
 const statsRecordDeniveleEl = document.getElementById("stats-record-denivele");
 const statsVideEl = document.getElementById("stats-vide");
+const profilPhotoEl = document.getElementById("profil-photo");
+const profilPhotoPlaceholderEl = document.getElementById("profil-photo-placeholder");
+const btnChangerPhoto = document.getElementById("btn-changer-photo");
+const inputPhotoProfil = document.getElementById("input-photo-profil");
+const photoProfilMsgEl = document.getElementById("photo-profil-msg");
+const btnVoirAmis = document.getElementById("btn-voir-amis");
+const btnAmisRetour = document.getElementById("btn-amis-retour");
+const amisRechercheInput = document.getElementById("amis-recherche-input");
+const amisRechercheResultatsEl = document.getElementById("amis-recherche-resultats");
+const amisDemandesTitreEl = document.getElementById("amis-demandes-titre");
+const amisDemandesListeEl = document.getElementById("amis-demandes-liste");
+const amisListeEl = document.getElementById("amis-liste");
+const amisVideEl = document.getElementById("amis-vide");
+const btnAmiProfilRetour = document.getElementById("btn-ami-profil-retour");
+const amiProfilTitreEl = document.getElementById("ami-profil-titre");
+const amiProfilPhotoEl = document.getElementById("ami-profil-photo");
+const amiProfilPhotoPlaceholderEl = document.getElementById("ami-profil-photo-placeholder");
+const amiProfilNomEl = document.getElementById("ami-profil-nom");
+const amiStatsDistanceTotaleEl = document.getElementById("ami-stats-distance-totale");
+const amiStatsDeniveleCumuleEl = document.getElementById("ami-stats-denivele-cumule");
+const amiStatsNbSortiesEl = document.getElementById("ami-stats-nb-sorties");
+const amiStatsDureeTotaleEl = document.getElementById("ami-stats-duree-totale");
+const amiHistoriqueListeEl = document.getElementById("ami-historique-liste");
+const amiHistoriqueVideEl = document.getElementById("ami-historique-vide");
+const amiRefaireMsgEl = document.getElementById("ami-refaire-msg");
 
 function showAuthScreen() {
   authScreenEl.classList.remove("hidden");
@@ -95,11 +120,78 @@ function hideAuthScreen() {
   authScreenEl.classList.add("hidden");
 }
 
+// Échappe une chaîne avant de l'insérer dans du HTML construit dynamiquement (nom/email
+// d'autres utilisateurs affichés via la recherche d'amis, contenu non fiable côté client).
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str ?? "";
+  return div.innerHTML;
+}
+
+function afficherPhoto(photoBase64, imgEl, placeholderEl) {
+  if (photoBase64) {
+    imgEl.src = photoBase64;
+    imgEl.classList.remove("hidden");
+    placeholderEl.classList.add("hidden");
+  } else {
+    imgEl.classList.add("hidden");
+    placeholderEl.classList.remove("hidden");
+  }
+}
+
 function afficherProfil() {
   if (!currentUser) return;
   profilNomEl.textContent = currentUser.nom;
   profilEmailEl.textContent = currentUser.email;
+  afficherPhoto(currentUser.photo_base64, profilPhotoEl, profilPhotoPlaceholderEl);
 }
+
+function afficherMsgPhotoProfil(text, cls) {
+  photoProfilMsgEl.textContent = text;
+  photoProfilMsgEl.classList.remove("hidden", "msg-error", "msg-success", "msg-info");
+  photoProfilMsgEl.classList.add(cls);
+}
+
+btnChangerPhoto.addEventListener("click", () => inputPhotoProfil.click());
+
+inputPhotoProfil.addEventListener("change", async () => {
+  const file = inputPhotoProfil.files[0];
+  inputPhotoProfil.value = "";
+  if (!file) return;
+
+  if (!file.type.startsWith("image/")) {
+    afficherMsgPhotoProfil("Le fichier sélectionné n'est pas une image.", "msg-error");
+    return;
+  }
+  if (file.size > 2_000_000) {
+    afficherMsgPhotoProfil("Image trop volumineuse (2 Mo max).", "msg-error");
+    return;
+  }
+
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error("Lecture du fichier impossible."));
+      reader.readAsDataURL(file);
+    });
+
+    const resp = await apiFetch("/auth/photo", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photo_base64: dataUrl }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+
+    currentUser = data;
+    localStorage.setItem(USER_KEY, JSON.stringify(data));
+    afficherProfil();
+    photoProfilMsgEl.classList.add("hidden");
+  } catch (err) {
+    afficherMsgPhotoProfil(err.message, "msg-error");
+  }
+});
 
 function afficherErreurAuth(message) {
   authErrorEl.textContent = message;
@@ -465,7 +557,16 @@ const btnPointsPratiquesToggle = document.getElementById("btn-points-pratiques-t
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
-const SHEETS = ["itineraire", "suggestions", "historique", "signalement", "profil", "stats"];
+const SHEETS = [
+  "itineraire",
+  "suggestions",
+  "historique",
+  "signalement",
+  "profil",
+  "stats",
+  "amis",
+  "ami-profil",
+];
 
 function closeAllSheets() {
   for (const name of SHEETS) {
@@ -1715,6 +1816,45 @@ function formatDureeS(s) {
   return h > 0 ? `${h}h ${String(min).padStart(2, "0")}min` : `${min}min`;
 }
 
+// Construit le contenu HTML (en-tête + comparaison prévu/réalisé) d'une entrée
+// d'historique, partagé entre "mon historique" et l'historique consulté d'un ami.
+function historiqueEntryHtml(entry) {
+  const date = new Date(entry.date_realisation).toLocaleDateString("fr-FR");
+  const itin = entry.itineraire;
+  const enTete = itin
+    ? `
+      <strong>${date}</strong><br>
+      Départ : ${itin.point_depart_lat.toFixed(4)}, ${itin.point_depart_lon.toFixed(4)}
+    `
+    : `<strong>${date}</strong><br>Itinéraire supprimé`;
+
+  const aDesStatsReelles = entry.distance_reelle_km != null;
+  const comparaison = !itin
+    ? ""
+    : aDesStatsReelles
+    ? `
+      <div class="prevu-realise">
+        <div class="prevu-realise-col">
+          <span class="prevu-realise-label">Prévu</span>
+          <span>${itin.distance_km?.toFixed(2) ?? "?"} km</span>
+          <span>${Math.round(itin.denivele_m ?? 0)} m D+</span>
+        </div>
+        <div class="prevu-realise-col prevu-realise-reel">
+          <span class="prevu-realise-label">Réalisé</span>
+          <span>${entry.distance_reelle_km.toFixed(2)} km</span>
+          <span>${Math.round(entry.denivele_positif_reel_m ?? 0)} m D+ / ${Math.round(entry.denivele_negatif_reel_m ?? 0)} m D-</span>
+          <span>${formatDureeS(entry.duree_reelle_s)} — ${entry.vitesse_moyenne_kmh.toFixed(1)} km/h moy. (max ${entry.vitesse_max_kmh.toFixed(1)})</span>
+        </div>
+      </div>
+    `
+    : `
+      Distance prévue : ${itin.distance_km?.toFixed(2) ?? "?"} km —
+      Dénivelé prévu : ${Math.round(itin.denivele_m ?? 0)} m<br>
+    `;
+
+  return enTete + comparaison;
+}
+
 async function fetchHistorique() {
   try {
     const resp = await apiFetch(`/historique`);
@@ -1726,40 +1866,7 @@ async function fetchHistorique() {
 
     for (const entry of entries) {
       const li = document.createElement("li");
-      const date = new Date(entry.date_realisation).toLocaleDateString("fr-FR");
-      const itin = entry.itineraire;
-      const enTete = itin
-        ? `
-          <strong>${date}</strong><br>
-          Départ : ${itin.point_depart_lat.toFixed(4)}, ${itin.point_depart_lon.toFixed(4)}
-        `
-        : `<strong>${date}</strong><br>Itinéraire supprimé`;
-
-      const aDesStatsReelles = entry.distance_reelle_km != null;
-      const comparaison = !itin
-        ? ""
-        : aDesStatsReelles
-        ? `
-          <div class="prevu-realise">
-            <div class="prevu-realise-col">
-              <span class="prevu-realise-label">Prévu</span>
-              <span>${itin.distance_km?.toFixed(2) ?? "?"} km</span>
-              <span>${Math.round(itin.denivele_m ?? 0)} m D+</span>
-            </div>
-            <div class="prevu-realise-col prevu-realise-reel">
-              <span class="prevu-realise-label">Réalisé</span>
-              <span>${entry.distance_reelle_km.toFixed(2)} km</span>
-              <span>${Math.round(entry.denivele_positif_reel_m ?? 0)} m D+ / ${Math.round(entry.denivele_negatif_reel_m ?? 0)} m D-</span>
-              <span>${formatDureeS(entry.duree_reelle_s)} — ${entry.vitesse_moyenne_kmh.toFixed(1)} km/h moy. (max ${entry.vitesse_max_kmh.toFixed(1)})</span>
-            </div>
-          </div>
-        `
-        : `
-          Distance prévue : ${itin.distance_km?.toFixed(2) ?? "?"} km —
-          Dénivelé prévu : ${Math.round(itin.denivele_m ?? 0)} m<br>
-        `;
-
-      li.innerHTML = enTete + comparaison;
+      li.innerHTML = historiqueEntryHtml(entry);
       historiqueListeEl.appendChild(li);
     }
   } catch (err) {
@@ -1768,6 +1875,277 @@ async function fetchHistorique() {
 }
 
 btnRefreshHistorique.addEventListener("click", fetchHistorique);
+
+// ---------- Système d'amis ----------
+
+btnVoirAmis.addEventListener("click", () => {
+  openSheet("amis");
+  document.querySelector('.tab-btn[data-sheet="profil"]')?.classList.add("active");
+  amisRechercheInput.value = "";
+  amisRechercheResultatsEl.innerHTML = "";
+  amisRechercheResultatsEl.classList.add("hidden");
+  chargerDemandesRecues();
+  chargerListeAmis();
+});
+
+btnAmisRetour.addEventListener("click", () => openSheet("profil"));
+btnAmiProfilRetour.addEventListener("click", () => openSheet("amis"));
+
+// Construit l'élément <li> commun (avatar + nom [+ email]) utilisé dans les 3 listes
+// d'amis (recherche, demandes reçues, amis). Le conteneur ".ami-actions", vide, est
+// laissé à charge de l'appelant pour y placer les boutons pertinents (ou le retirer).
+function creerAmiLi({ id, nom, email, photo_base64 }, cliquable) {
+  const li = document.createElement("li");
+  li.className = "amis-liste-item" + (cliquable ? " cliquable" : "");
+  li.dataset.userId = id;
+
+  const avatarHtml = photo_base64
+    ? `<img class="ami-avatar" src="${photo_base64}" alt="">`
+    : `<span class="ami-avatar-placeholder">🧑</span>`;
+
+  li.innerHTML = `
+    ${avatarHtml}
+    <div class="ami-info">
+      <div class="ami-nom">${escapeHtml(nom)}</div>
+      ${email ? `<div class="ami-email">${escapeHtml(email)}</div>` : ""}
+    </div>
+    <div class="ami-actions"></div>
+  `;
+  return li;
+}
+
+// Boutons d'action adaptés au statut de la relation avec cet utilisateur.
+function actionsPourStatut(statut, friendshipId, userId) {
+  const div = document.createElement("div");
+  div.className = "ami-actions";
+
+  function bouton(texte, classe, onClick, disabled) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = classe;
+    btn.textContent = texte;
+    btn.disabled = !!disabled;
+    if (onClick) btn.addEventListener("click", onClick);
+    div.appendChild(btn);
+    return btn;
+  }
+
+  if (statut === "aucune") {
+    bouton("➕ Ajouter", "btn-mini btn-mini-accent", (e) => envoyerDemandeAmi(userId, e.target));
+  } else if (statut === "demande_envoyee") {
+    bouton("⏳ Envoyée", "btn-mini", null, true);
+    bouton("Annuler", "btn-mini", (e) => supprimerRelation(friendshipId, e.target));
+  } else if (statut === "demande_recue") {
+    bouton("✔️ Accepter", "btn-mini btn-mini-accent", (e) => accepterDemande(friendshipId, e.target));
+    bouton("✕ Refuser", "btn-mini", (e) => supprimerRelation(friendshipId, e.target));
+  } else if (statut === "ami") {
+    bouton("✓ Ami", "btn-mini", null, true);
+  }
+
+  return div;
+}
+
+function rafraichirRechercheAmisSiActive() {
+  const q = amisRechercheInput.value.trim();
+  if (q.length >= 2) rechercherAmis(q);
+}
+
+async function envoyerDemandeAmi(friendId, btn) {
+  btn.disabled = true;
+  try {
+    const resp = await apiFetch("/amis/demandes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ friend_id: friendId }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    rafraichirRechercheAmisSiActive();
+  } catch (err) {
+    console.error("Erreur envoi demande d'ami :", err);
+    btn.disabled = false;
+  }
+}
+
+async function accepterDemande(friendshipId, btn) {
+  btn.disabled = true;
+  try {
+    const resp = await apiFetch(`/amis/demandes/${friendshipId}/accepter`, { method: "POST" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    chargerDemandesRecues();
+    chargerListeAmis();
+    rafraichirRechercheAmisSiActive();
+  } catch (err) {
+    console.error("Erreur acceptation demande d'ami :", err);
+    btn.disabled = false;
+  }
+}
+
+// Sert à la fois à refuser une demande reçue, annuler une demande envoyée, ou retirer
+// un ami déjà accepté (le backend distingue le cas via le statut de la relation).
+async function supprimerRelation(friendshipId, btn) {
+  btn.disabled = true;
+  try {
+    const resp = await apiFetch(`/amis/demandes/${friendshipId}`, { method: "DELETE" });
+    if (!resp.ok && resp.status !== 204) throw new Error(`HTTP ${resp.status}`);
+    chargerDemandesRecues();
+    chargerListeAmis();
+    rafraichirRechercheAmisSiActive();
+  } catch (err) {
+    console.error("Erreur suppression de la relation d'amitié :", err);
+    btn.disabled = false;
+  }
+}
+
+function renderRechercheAmis(resultats) {
+  amisRechercheResultatsEl.innerHTML = "";
+  if (resultats.length === 0) {
+    amisRechercheResultatsEl.classList.add("hidden");
+    return;
+  }
+  for (const u of resultats) {
+    const li = creerAmiLi(u, false);
+    li.querySelector(".ami-actions").replaceWith(actionsPourStatut(u.statut_amitie, u.friendship_id, u.id));
+    amisRechercheResultatsEl.appendChild(li);
+  }
+  amisRechercheResultatsEl.classList.remove("hidden");
+}
+
+async function rechercherAmis(q) {
+  try {
+    const resp = await apiFetch(`/amis/recherche?q=${encodeURIComponent(q)}`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    renderRechercheAmis(await resp.json());
+  } catch (err) {
+    console.error("Erreur recherche d'amis :", err);
+  }
+}
+
+let amisRechercheDebounceTimer = null;
+
+amisRechercheInput.addEventListener("input", () => {
+  clearTimeout(amisRechercheDebounceTimer);
+  const q = amisRechercheInput.value.trim();
+  if (q.length < 2) {
+    amisRechercheResultatsEl.innerHTML = "";
+    amisRechercheResultatsEl.classList.add("hidden");
+    return;
+  }
+  amisRechercheDebounceTimer = setTimeout(() => rechercherAmis(q), 400);
+});
+
+async function chargerDemandesRecues() {
+  try {
+    const resp = await apiFetch("/amis/demandes");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const demandes = await resp.json();
+
+    amisDemandesListeEl.innerHTML = "";
+    amisDemandesTitreEl.classList.toggle("hidden", demandes.length === 0);
+    for (const d of demandes) {
+      const li = creerAmiLi(d.utilisateur, false);
+      li.querySelector(".ami-actions").replaceWith(actionsPourStatut("demande_recue", d.id, d.utilisateur.id));
+      amisDemandesListeEl.appendChild(li);
+    }
+  } catch (err) {
+    console.error("Erreur chargement des demandes d'amis :", err);
+  }
+}
+
+async function chargerListeAmis() {
+  try {
+    const resp = await apiFetch("/amis");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const amis = await resp.json();
+
+    amisListeEl.innerHTML = "";
+    amisVideEl.classList.toggle("hidden", amis.length > 0);
+    for (const a of amis) {
+      const li = creerAmiLi(a.utilisateur, true);
+      li.querySelector(".ami-actions").remove();
+      li.addEventListener("click", () => ouvrirProfilAmi(a.utilisateur.id, a.utilisateur.nom));
+      amisListeEl.appendChild(li);
+    }
+  } catch (err) {
+    console.error("Erreur chargement de la liste d'amis :", err);
+  }
+}
+
+function renderHistoriqueAmi(entries) {
+  amiHistoriqueListeEl.innerHTML = "";
+  amiHistoriqueVideEl.classList.toggle("hidden", entries.length > 0);
+
+  for (const entry of entries) {
+    const li = document.createElement("li");
+    li.innerHTML = historiqueEntryHtml(entry);
+
+    if (entry.itineraire) {
+      const btnRefaire = document.createElement("button");
+      btnRefaire.type = "button";
+      btnRefaire.className = "btn-secondary btn-refaire";
+      btnRefaire.textContent = "🔁 Refaire cette rando";
+      btnRefaire.addEventListener("click", () => refaireRandoAmi(entry.itineraire.id, btnRefaire));
+      li.appendChild(btnRefaire);
+    }
+
+    amiHistoriqueListeEl.appendChild(li);
+  }
+}
+
+async function ouvrirProfilAmi(friendId, nomAffiche) {
+  amiProfilTitreEl.textContent = nomAffiche;
+  amiRefaireMsgEl.classList.add("hidden");
+  amiHistoriqueListeEl.innerHTML = "";
+  amiHistoriqueVideEl.classList.add("hidden");
+  openSheet("ami-profil");
+  document.querySelector('.tab-btn[data-sheet="profil"]')?.classList.add("active");
+
+  try {
+    const resp = await apiFetch(`/amis/${friendId}/profil`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    afficherPhoto(data.utilisateur.photo_base64, amiProfilPhotoEl, amiProfilPhotoPlaceholderEl);
+    amiProfilNomEl.textContent = data.utilisateur.nom;
+
+    const stats = data.stats;
+    animateCountUp(amiStatsDistanceTotaleEl, stats.distance_totale_km, { decimals: 2 });
+    animateCountUp(amiStatsDeniveleCumuleEl, stats.denivele_positif_cumule_m);
+    amiStatsNbSortiesEl.textContent = stats.nb_sorties;
+    amiStatsDureeTotaleEl.textContent = formatDureeS(stats.duree_totale_s);
+  } catch (err) {
+    console.error("Erreur chargement du profil ami :", err);
+  }
+
+  try {
+    const resp = await apiFetch(`/amis/${friendId}/historique`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    renderHistoriqueAmi(await resp.json());
+  } catch (err) {
+    console.error("Erreur chargement de l'historique de l'ami :", err);
+  }
+}
+
+async function refaireRandoAmi(itineraireId, btn) {
+  btn.disabled = true;
+  btn.textContent = "Chargement...";
+  amiRefaireMsgEl.classList.add("hidden");
+  try {
+    const resp = await apiFetch(`/itineraires/${itineraireId}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+
+    chargerItineraireDansLaCarte(data);
+    openSheet("itineraire");
+  } catch (err) {
+    amiRefaireMsgEl.textContent = err.message;
+    amiRefaireMsgEl.classList.remove("hidden", "msg-success", "msg-info");
+    amiRefaireMsgEl.classList.add("msg-error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🔁 Refaire cette rando";
+  }
+}
 
 // ---------- Aperçu photo du parcours (Wikimedia Commons) ----------
 
@@ -1928,6 +2306,55 @@ btnChercherSuggestions.addEventListener("click", async () => {
   }
 });
 
+// Affiche un itinéraire déjà généré (ItineraireOut complet, avec trace_geojson) sur la
+// carte et réinitialise l'état associé. Partagé entre la génération d'un nouvel
+// itinéraire et le chargement de l'itinéraire d'un ami via "Refaire cette rando".
+function chargerItineraireDansLaCarte(data) {
+  itineraireErrorEl.classList.add("hidden");
+  resultatEl.classList.add("hidden");
+  rowDistanceRestanteEl.classList.add("hidden");
+  rowDeniveleRestantEl.classList.add("hidden");
+  rowTempsRestantEl.classList.add("hidden");
+  rowHeureArriveeEl.classList.add("hidden");
+  meteoPanelEl.classList.add("hidden");
+  photosGalerieEl.classList.add("hidden");
+  photosGalerieEl.innerHTML = "";
+  btnMarquerFait.classList.add("hidden");
+  if (navigationActive) arreterNavigation();
+  btnDemarrerNav.classList.add("hidden");
+  btnTerminerNav.classList.add("hidden");
+
+  modeSelect.value = data.mode;
+  arriveeSectionEl.classList.toggle("hidden", data.mode !== "point_a_point");
+  placerDepart(data.point_depart_lat, data.point_depart_lon, false);
+  if (data.mode === "point_a_point" && data.point_arrivee_lat != null) {
+    placerArrivee(data.point_arrivee_lat, data.point_arrivee_lon);
+  }
+
+  traceLayer.clearLayers();
+  L.geoJSON(data.trace_geojson, {
+    style: { color: "#fc4c02", weight: 4 },
+  }).addTo(traceLayer);
+  map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
+
+  const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
+  currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat, ele]) => [lat, lon, ele]) : null;
+  currentSteps = data.trace_geojson.features?.[0]?.properties?.segments?.[0]?.steps || null;
+
+  animateCountUp(resDistanceEl, data.distance_km, { decimals: 2 });
+  animateCountUp(resDeniveleEl, data.denivele_m);
+  resultatEl.classList.remove("hidden");
+
+  fetchSignalementsProches(data.point_depart_lat, data.point_depart_lon);
+  fetchMeteo(data.point_depart_lat, data.point_depart_lon);
+  if (currentTraceCoords) fetchApercuPhotos(currentTraceCoords);
+  if (currentTraceCoords && btnPointsPratiquesToggle.classList.contains("active")) {
+    fetchPointsPratiques(currentTraceCoords);
+  }
+  resetMarquerFait(data.id);
+  btnDemarrerNav.classList.remove("hidden");
+}
+
 formItineraire.addEventListener("submit", async (e) => {
   e.preventDefault();
   const mode = modeSelect.value;
@@ -1970,28 +2397,7 @@ formItineraire.addEventListener("submit", async (e) => {
       throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
     }
 
-    traceLayer.clearLayers();
-    L.geoJSON(data.trace_geojson, {
-      style: { color: "#fc4c02", weight: 4 },
-    }).addTo(traceLayer);
-    map.fitBounds(traceLayer.getBounds(), { padding: [30, 30] });
-
-    const traceCoords = data.trace_geojson.features?.[0]?.geometry?.coordinates;
-    currentTraceCoords = traceCoords ? traceCoords.map(([lon, lat, ele]) => [lat, lon, ele]) : null;
-    currentSteps = data.trace_geojson.features?.[0]?.properties?.segments?.[0]?.steps || null;
-
-    animateCountUp(resDistanceEl, data.distance_km, { decimals: 2 });
-    animateCountUp(resDeniveleEl, data.denivele_m);
-    resultatEl.classList.remove("hidden");
-
-    fetchSignalementsProches(departLatLng.lat, departLatLng.lng);
-    fetchMeteo(departLatLng.lat, departLatLng.lng);
-    if (currentTraceCoords) fetchApercuPhotos(currentTraceCoords);
-    if (currentTraceCoords && btnPointsPratiquesToggle.classList.contains("active")) {
-      fetchPointsPratiques(currentTraceCoords);
-    }
-    resetMarquerFait(data.id);
-    btnDemarrerNav.classList.remove("hidden");
+    chargerItineraireDansLaCarte(data);
   } catch (err) {
     itineraireErrorEl.textContent = err.message;
     itineraireErrorEl.classList.remove("hidden");

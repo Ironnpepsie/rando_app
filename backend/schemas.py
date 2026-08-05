@@ -3,7 +3,13 @@ from typing import Optional, Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from models import NiveauEnum, ModeItineraireEnum, SignalementType, SignalementStatut
+from models import (
+    NiveauEnum,
+    ModeItineraireEnum,
+    SignalementType,
+    SignalementStatut,
+    FriendshipStatusEnum,
+)
 
 
 # --- Auth / User ---
@@ -14,6 +20,7 @@ class UserOut(BaseModel):
     id: int
     email: EmailStr
     nom: str
+    photo_base64: Optional[str] = None
     created_at: datetime
 
 
@@ -31,6 +38,10 @@ class LoginRequest(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: UserOut
+
+
+class PhotoProfilRequest(BaseModel):
+    photo_base64: str = Field(min_length=1)
 
 
 # --- Itineraire ---
@@ -157,6 +168,45 @@ class HistoriqueStats(BaseModel):
     duree_totale_s: float
     record_distance_km: Optional[float] = None
     record_denivele_m: Optional[float] = None
+
+
+# --- Amis ---
+
+class UserPublicOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nom: str
+    photo_base64: Optional[str] = None
+
+
+class UserRechercheResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nom: str
+    email: EmailStr
+    photo_base64: Optional[str] = None
+    # "aucune" | "ami" | "demande_envoyee" | "demande_recue"
+    statut_amitie: str
+    friendship_id: Optional[int] = None
+
+
+class FriendshipCreate(BaseModel):
+    friend_id: int
+
+
+class FriendshipOut(BaseModel):
+    id: int
+    status: FriendshipStatusEnum
+    created_at: datetime
+    # L'autre utilisateur de la relation, du point de vue de l'utilisateur courant.
+    utilisateur: UserPublicOut
+
+
+class ProfilAmiOut(BaseModel):
+    utilisateur: UserPublicOut
+    stats: HistoriqueStats
 
 
 # --- Guide audio ---

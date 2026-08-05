@@ -8,6 +8,9 @@ from database import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# ~2 Mo d'image d'origine une fois décodée (base64 ajoute environ 33% de volume).
+TAILLE_MAX_PHOTO_B64 = 2_800_000
+
 
 @router.post("/register", response_model=schemas.AuthResponse)
 def register(payload: schemas.RegisterRequest, db: Session = Depends(get_db)):
@@ -58,4 +61,19 @@ def logout():
 
 @router.get("/me", response_model=schemas.UserOut)
 def me(current_user: models.User = Depends(auth.get_current_user)):
+    return current_user
+
+
+@router.put("/photo", response_model=schemas.UserOut)
+def mettre_a_jour_photo(
+    payload: schemas.PhotoProfilRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    if len(payload.photo_base64) > TAILLE_MAX_PHOTO_B64:
+        raise HTTPException(status_code=413, detail="Photo trop volumineuse (2 Mo max)")
+
+    current_user.photo_base64 = payload.photo_base64
+    db.commit()
+    db.refresh(current_user)
     return current_user

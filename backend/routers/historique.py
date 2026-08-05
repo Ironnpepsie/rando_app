@@ -40,11 +40,7 @@ def lister_historique(
     )
 
 
-@router.get("/stats", response_model=schemas.HistoriqueStats)
-def statistiques_personnelles(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.get_current_user),
-):
+def calculer_stats_utilisateur(db: Session, user_id: int) -> schemas.HistoriqueStats:
     # Seules les sorties avec des stats réelles enregistrées (suivi GPS terminé)
     # comptent dans les cumuls : une entrée "Marquer comme fait" sans trace GPS
     # n'a pas de distance_reelle_km et n'est donc pas comptabilisée ici.
@@ -58,7 +54,7 @@ def statistiques_personnelles(
             func.max(models.RandoHistorique.denivele_positif_reel_m),
         )
         .filter(
-            models.RandoHistorique.user_id == current_user.id,
+            models.RandoHistorique.user_id == user_id,
             models.RandoHistorique.distance_reelle_km.isnot(None),
         )
         .one()
@@ -73,3 +69,11 @@ def statistiques_personnelles(
         record_distance_km=record_distance,
         record_denivele_m=record_denivele,
     )
+
+
+@router.get("/stats", response_model=schemas.HistoriqueStats)
+def statistiques_personnelles(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    return calculer_stats_utilisateur(db, current_user.id)
