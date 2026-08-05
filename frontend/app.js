@@ -618,12 +618,16 @@ const btnRefreshSignalements = document.getElementById("btn-refresh-signalements
 const historiqueListeEl = document.getElementById("historique-liste");
 const historiqueVideEl = document.getElementById("historique-vide");
 const btnRefreshHistorique = document.getElementById("btn-refresh-historique");
+const pendingHistoriqueInfoEl = document.getElementById("pending-historique-info");
+const pendingHistoriqueInfoTextEl = document.getElementById("pending-historique-info-text");
+const btnSyncHistoriqueNow = document.getElementById("btn-sync-historique-now");
 const btnGeoloc = document.getElementById("btn-geoloc");
 const geolocErrorEl = document.getElementById("geoloc-error");
 const pickingBanner = document.getElementById("picking-banner");
 const pickingBannerText = document.getElementById("picking-banner-text");
 const btnPickingCancel = document.getElementById("btn-picking-cancel");
 const btnGpsToggle = document.getElementById("btn-gps-toggle");
+const reseauDotEl = document.getElementById("reseau-dot");
 const gpsErrorBanner = document.getElementById("gps-error-banner");
 const gpsErrorText = document.getElementById("gps-error-text");
 const btnGpsErrorClose = document.getElementById("btn-gps-error-close");
@@ -1024,12 +1028,28 @@ function deniveleEntreIndicesSurTrace(idxA, idxB) {
   return denivele;
 }
 
-function showGpsError(text) {
+// Le bandeau d'alerte GPS est partagé entre plusieurs types d'avertissement (signal perdu,
+// hors-trace...) ; on retient lequel est affiché pour ne dissiper que le bon type de message
+// quand la situation qui l'a déclenché se résout (ex : un nouveau fix GPS valide ne doit pas
+// effacer un avertissement "hors-trace" toujours d'actualité).
+let typeAlerteGps = null; // 'signal' | 'hors-trace' | null
+
+function showGpsError(text, type = null) {
   gpsErrorText.textContent = text;
   gpsErrorBanner.classList.remove("hidden");
+  typeAlerteGps = type;
 }
 
-btnGpsErrorClose.addEventListener("click", () => gpsErrorBanner.classList.add("hidden"));
+function cacherGpsErrorSiType(type) {
+  if (typeAlerteGps !== type) return;
+  gpsErrorBanner.classList.add("hidden");
+  typeAlerteGps = null;
+}
+
+btnGpsErrorClose.addEventListener("click", () => {
+  gpsErrorBanner.classList.add("hidden");
+  typeAlerteGps = null;
+});
 
 // Applique/actualise l'icône flèche orientée du marqueur GPS pendant la navigation
 // (icône simple sinon), et fait tourner la flèche selon le cap réel (heading natif de
@@ -1059,7 +1079,12 @@ function mettreAJourIconeEtCapGps(latlng, latlngPrecedent, position) {
   }
 }
 
+const GPS_INTERVALLE_TRAITEMENT_NAV_MS = 3000; // cf. commentaire dans onGpsPosition
+let dernierTraitementNavMs = 0;
+
 function onGpsPosition(position) {
+  cacherGpsErrorSiType("signal"); // un fix valide arrive : le signal GPS est revenu
+
   const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
   const latlngPrecedent = gpsMarker ? gpsMarker.getLatLng() : null;
   const premiereFoisEnNavigation = navigationActive && gpsMarkerModeNav !== navigationActive;
@@ -1078,6 +1103,20 @@ function onGpsPosition(position) {
       ele: position.coords.altitude,
       t: position.timestamp ?? Date.now(),
     });
+
+    // Le calcul de distance au tracé (boucles sur l'ensemble de ses points), la mise à jour
+    // de l'instruction turn-by-turn et le recentrage de la carte sont les opérations
+    // coûteuses de ce handler : les limiter à un rythme raisonnable (l'API Geolocation ne
+    // permet pas de réduire directement la fréquence des fix eux-mêmes) évite de les
+    // répéter à chaque position reçue — potentiellement plusieurs fois par seconde — pour
+    // un gain de précision nul à l'échelle d'une progression à pied, au prix d'une économie
+    // de batterie appréciable. Le tout premier fix après le démarrage de la navigation n'est
+    // jamais retardé (zoom serré + bascule de l'icône immédiats).
+    const maintenant = Date.now();
+    if (!premiereFoisEnNavigation && maintenant - dernierTraitementNavMs < GPS_INTERVALLE_TRAITEMENT_NAV_MS) {
+      return;
+    }
+    dernierTraitementNavMs = maintenant;
   }
 
   if (currentTraceCoords && currentTraceCoords.length > 1) {
@@ -1110,9 +1149,9 @@ function onGpsPosition(position) {
 
       const horsTrace = distProche > SEUIL_HORS_TRACE_M;
       if (horsTrace && !horsTraceActif) {
-        showGpsError(`⚠️ Vous semblez vous être éloigné(e) du tracé (~${Math.round(distProche)} m).`);
+        showGpsError(`⚠️ Vous semblez vous être éloigné(e) du tracé (~${Math.round(distProche)} m).`, "hors-trace");
       } else if (!horsTrace && horsTraceActif) {
-        gpsErrorBanner.classList.add("hidden");
+        cacherGpsErrorSiType("hors-trace");
       }
       horsTraceActif = horsTrace;
 
@@ -1128,13 +1167,33 @@ function onGpsPosition(position) {
 }
 
 function onGpsError(err) {
-  stopGpsTracking();
+  if (err.code === err.PERMISSION_DENIED) {
+    stopGpsTracking();
+    showGpsError("Permission de localisation refusée.");
+    return;
+  }
+  // TIMEOUT / POSITION_UNAVAILABLE : signal GPS momentanément indisponible (couvert
+  // forestier, relief encaissé...). watchPosition continue de tourner tout seul et
+  // retentera automatiquement dès qu'un fix redevient possible : on se contente d'avertir
+  // sans couper le suivi ni la navigation en cours, pour ne pas perdre la progression
+  // enregistrée à cause d'une simple perte de signal transitoire.
   showGpsError(
-    err.code === err.PERMISSION_DENIED
-      ? "Permission de localisation refusée."
-      : "Impossible de suivre votre position en direct."
+    err.code === err.TIMEOUT
+      ? "⚠️ Signal GPS perdu, nouvelle tentative en cours..."
+      : "⚠️ Position GPS momentanément indisponible.",
+    "signal"
   );
 }
+
+// ---------- Indicateur discret de statut réseau (visible pendant le suivi GPS/la navigation) ----------
+
+function definirEtatReseau(enLigne) {
+  reseauDotEl.classList.toggle("reseau-dot-off", !enLigne);
+  reseauDotEl.title = enLigne ? "Connecté" : "Hors-ligne";
+}
+
+window.addEventListener("online", () => definirEtatReseau(true));
+window.addEventListener("offline", () => definirEtatReseau(false));
 
 function startGpsTracking() {
   if (!navigator.geolocation) {
@@ -1143,6 +1202,8 @@ function startGpsTracking() {
   }
   gpsActive = true;
   btnGpsToggle.classList.add("active");
+  definirEtatReseau(navigator.onLine);
+  reseauDotEl.classList.remove("hidden");
   gpsWatchId = navigator.geolocation.watchPosition(onGpsPosition, onGpsError, {
     enableHighAccuracy: true,
     maximumAge: 5000,
@@ -1153,6 +1214,7 @@ function startGpsTracking() {
 function stopGpsTracking() {
   gpsActive = false;
   btnGpsToggle.classList.remove("active");
+  reseauDotEl.classList.add("hidden");
   if (gpsWatchId !== null) {
     navigator.geolocation.clearWatch(gpsWatchId);
     gpsWatchId = null;
@@ -1242,6 +1304,7 @@ function demarrerNavigation() {
   navigationActive = true;
   horsTraceActif = false;
   traceReellePoints = [];
+  dernierTraitementNavMs = 0;
   btnDemarrerNav.classList.add("hidden");
   btnTerminerNav.classList.remove("hidden");
   terminerNavMsgEl.classList.add("hidden");
@@ -1401,6 +1464,87 @@ function estimerTempsRestantMin(distanceRestanteKm, deniveleRestantM) {
   return tempsBaseMin + tempsDeniveleMin;
 }
 
+// ---------- Mode hors-ligne pour la fin de rando (finir une rando sans réseau ne doit pas
+// faire perdre le suivi GPS enregistré) ----------
+
+const PENDING_HISTORIQUE_KEY = "randoapp_pending_historique";
+
+function getPendingHistorique() {
+  try {
+    return JSON.parse(localStorage.getItem(PENDING_HISTORIQUE_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingHistorique(list) {
+  localStorage.setItem(PENDING_HISTORIQUE_KEY, JSON.stringify(list));
+}
+
+function addPendingHistorique(entry) {
+  const list = getPendingHistorique();
+  list.push(entry);
+  savePendingHistorique(list);
+}
+
+function removePendingHistorique(tempId) {
+  savePendingHistorique(getPendingHistorique().filter((e) => e.tempId !== tempId));
+}
+
+function updatePendingHistoriqueUI() {
+  const queue = getPendingHistorique();
+  if (queue.length === 0) {
+    pendingHistoriqueInfoEl.classList.add("hidden");
+  } else {
+    pendingHistoriqueInfoTextEl.textContent = `📤 ${queue.length} rando(s) en attente d'envoi (hors-ligne).`;
+    pendingHistoriqueInfoEl.classList.remove("hidden");
+  }
+}
+
+let syncHistoriqueEnCours = false;
+
+async function syncPendingHistorique() {
+  if (syncHistoriqueEnCours) return;
+  const queue = getPendingHistorique();
+  if (queue.length === 0) return;
+  syncHistoriqueEnCours = true;
+
+  for (const entry of queue) {
+    const { tempId, ...payload } = entry;
+    try {
+      const resp = await apiFetch(`/historique`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!resp.ok) {
+        console.error("Rando en attente rejetée par le serveur, abandonnée:", await resp.text());
+      }
+      removePendingHistorique(tempId);
+    } catch (err) {
+      break; // toujours hors-ligne, on retentera plus tard
+    }
+  }
+
+  updatePendingHistoriqueUI();
+  fetchHistorique();
+  syncHistoriqueEnCours = false;
+}
+
+window.addEventListener("online", syncPendingHistorique);
+setInterval(() => {
+  if (navigator.onLine) syncPendingHistorique();
+}, 20000);
+
+btnSyncHistoriqueNow.addEventListener("click", async () => {
+  definirChargementBouton(btnSyncHistoriqueNow, true, "Envoi en cours...");
+  await syncPendingHistorique();
+  definirChargementBouton(btnSyncHistoriqueNow, false);
+  if (getPendingHistorique().length > 0) {
+    afficherToast("Connexion impossible. Vérifie ta connexion et réessaie dans un instant.");
+  }
+});
+
 async function terminerRando() {
   const points = traceReellePoints;
   const itineraireId = currentItineraireId;
@@ -1425,6 +1569,32 @@ async function terminerRando() {
     return;
   }
 
+  const payload = {
+    itineraire_id: itineraireId,
+    distance_reelle_km: stats.distanceKm,
+    denivele_positif_reel_m: stats.denivelePositifM,
+    denivele_negatif_reel_m: stats.deniveleNegatifM,
+    duree_reelle_s: stats.dureeS,
+    vitesse_moyenne_kmh: stats.vitesseMoyenneKmh,
+    vitesse_max_kmh: stats.vitesseMaxKmh,
+    trace_reelle: points.map((p) => [p.lat, p.lon, p.ele, new Date(p.t).toISOString()]),
+  };
+
+  // Pas de réseau au moment de finir la rando (cas fréquent en montagne) : on met en file
+  // d'attente plutôt que de perdre le suivi GPS enregistré, exactement comme pour les
+  // signalements créés hors-ligne.
+  if (!navigator.onLine) {
+    addPendingHistorique({ tempId: crypto.randomUUID(), ...payload });
+    updatePendingHistoriqueUI();
+    terminerNavMsgEl.textContent =
+      `Rando terminée : ${stats.distanceKm.toFixed(2)} km, ` +
+      `${Math.round(stats.denivelePositifM)} m D+. Pas de réseau : elle sera enregistrée ` +
+      `automatiquement dès que la connexion revient.`;
+    terminerNavMsgEl.classList.remove("hidden", "msg-error", "msg-success");
+    terminerNavMsgEl.classList.add("msg-info");
+    return;
+  }
+
   terminerNavMsgEl.textContent = "⏳ Enregistrement de la rando...";
   terminerNavMsgEl.classList.remove("hidden", "msg-error", "msg-success");
   terminerNavMsgEl.classList.add("msg-info");
@@ -1433,16 +1603,7 @@ async function terminerRando() {
     const resp = await apiFetch(`/historique`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        itineraire_id: itineraireId,
-        distance_reelle_km: stats.distanceKm,
-        denivele_positif_reel_m: stats.denivelePositifM,
-        denivele_negatif_reel_m: stats.deniveleNegatifM,
-        duree_reelle_s: stats.dureeS,
-        vitesse_moyenne_kmh: stats.vitesseMoyenneKmh,
-        vitesse_max_kmh: stats.vitesseMaxKmh,
-        trace_reelle: points.map((p) => [p.lat, p.lon, p.ele, new Date(p.t).toISOString()]),
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
@@ -1454,6 +1615,19 @@ async function terminerRando() {
     terminerNavMsgEl.classList.add("msg-success");
     fetchHistorique();
   } catch (err) {
+    if (err instanceof TypeError) {
+      // Échec réseau (pas juste une erreur applicative) : on met en file d'attente plutôt
+      // que d'afficher une simple erreur qui ferait perdre la trace enregistrée.
+      addPendingHistorique({ tempId: crypto.randomUUID(), ...payload });
+      updatePendingHistoriqueUI();
+      terminerNavMsgEl.textContent =
+        `Rando terminée : ${stats.distanceKm.toFixed(2)} km, ` +
+        `${Math.round(stats.denivelePositifM)} m D+. Pas de réseau : elle sera enregistrée ` +
+        `automatiquement dès que la connexion revient.`;
+      terminerNavMsgEl.classList.remove("hidden", "msg-error", "msg-success");
+      terminerNavMsgEl.classList.add("msg-info");
+      return;
+    }
     terminerNavMsgEl.textContent = messageErreurReseau(err);
     terminerNavMsgEl.classList.remove("hidden", "msg-success", "msg-info");
     terminerNavMsgEl.classList.add("msg-error");
@@ -2740,3 +2914,4 @@ formSignalement.addEventListener("submit", async (e) => {
 
 fetchSignalementsProches(DEFAULT_CENTER[0], DEFAULT_CENTER[1]);
 if (getToken()) fetchHistorique();
+updatePendingHistoriqueUI();

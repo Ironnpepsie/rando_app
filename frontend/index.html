@@ -74,7 +74,10 @@
 
   <div id="map-controls-top">
     <button type="button" id="btn-install-app" class="map-fab hidden" aria-label="Installer l'application">📲</button>
-    <button type="button" id="btn-gps-toggle" class="map-fab" aria-label="Suivi GPS en direct">🛰️</button>
+    <button type="button" id="btn-gps-toggle" class="map-fab" aria-label="Suivi GPS en direct">
+      🛰️
+      <span id="reseau-dot" class="reseau-dot hidden" aria-hidden="true"></span>
+    </button>
     <button type="button" id="btn-meteo-layers-toggle" class="map-fab" aria-label="Couches météo">🌦️</button>
     <button type="button" id="btn-points-pratiques-toggle" class="map-fab" aria-label="Points pratiques (refuges, points d'eau, abris)">🏠</button>
     <button type="button" id="btn-rotation-toggle" class="map-fab hidden" aria-label="Rotation de la carte selon le cap">🧭</button>
@@ -223,6 +226,11 @@
       <ul id="historique-liste" class="historique-liste"></ul>
       <p id="historique-vide" class="coords hidden">Aucune rando marquée comme faite pour l'instant.</p>
       <button type="button" id="btn-refresh-historique" class="btn-secondary">🔄 Actualiser l'historique</button>
+
+      <div id="pending-historique-info" class="pending-info hidden">
+        <p id="pending-historique-info-text"></p>
+        <button type="button" id="btn-sync-historique-now" class="btn-secondary">🔄 Réessayer l'envoi maintenant</button>
+      </div>
     </div>
   </div>
 
