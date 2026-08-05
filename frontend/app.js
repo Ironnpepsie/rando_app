@@ -598,6 +598,111 @@ document.querySelectorAll(".sheet-close").forEach((btn) => {
   btn.addEventListener("click", () => closeAllSheets());
 });
 
+// ---------- Glisser pour fermer un panneau (façon Google Maps / Uber) ----------
+
+const SEUIL_FERMETURE_SHEET_RATIO = 1 / 3; // fraction de la hauteur du panneau à dépasser pour le fermer
+const SEUIL_DEADZONE_SHEET_PX = 6; // ignore les micros-mouvements pour ne pas gêner un simple tap
+
+// Anime la sortie complète du panneau vers le bas avant de le fermer "pour de vrai"
+// (retrait de la classe "open", cohérent avec le bouton ✕). Le nettoyage final réutilise
+// la classe "dragging" (transition: none) pour repasser instantanément à l'état fermé
+// normal sans provoquer de sursaut visuel entre les deux animations.
+function fermerSheetAvecAnimation(sheetEl) {
+  sheetEl.classList.remove("dragging");
+  sheetEl.style.transform = "translateY(100%)";
+  sheetEl.addEventListener(
+    "transitionend",
+    function onEnd(e) {
+      if (e.propertyName !== "transform") return;
+      sheetEl.removeEventListener("transitionend", onEnd);
+      sheetEl.classList.add("dragging");
+      closeAllSheets();
+      sheetEl.style.transform = "";
+      void sheetEl.offsetHeight; // force le reflow avant de réactiver la transition
+      sheetEl.classList.remove("dragging");
+    },
+    { once: true }
+  );
+}
+
+// Rend un panneau fermable en le faisant glisser vers le bas au doigt (ou à la souris,
+// pour les tests). Utilisable depuis n'importe où sur le panneau : si le geste démarre
+// dans le corps scrollable, on laisse le défilement natif agir tant qu'il n'est pas
+// remonté en haut (scrollTop === 0) — au-delà, glisser encore vers le bas ferme le panneau.
+function rendreSheetGlissable(sheetEl) {
+  const bodyEl = sheetEl.querySelector(".sheet-body");
+  let suivi = false;
+  let glissementCommence = false;
+  let pointerId = null;
+  let startY = 0;
+  let delta = 0;
+  let hauteurSheet = 0;
+
+  function annulerGlissementVisuel() {
+    glissementCommence = false;
+    delta = 0;
+    sheetEl.classList.remove("dragging");
+    sheetEl.style.transform = "";
+  }
+
+  sheetEl.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    if (!sheetEl.classList.contains("open")) return;
+    suivi = true;
+    glissementCommence = false;
+    pointerId = e.pointerId;
+    startY = e.clientY;
+    delta = 0;
+    hauteurSheet = sheetEl.offsetHeight;
+  });
+
+  sheetEl.addEventListener(
+    "pointermove",
+    (e) => {
+      if (!suivi || e.pointerId !== pointerId) return;
+      const deltaCourant = e.clientY - startY;
+
+      if (deltaCourant <= 0 || (bodyEl.scrollTop > 0 && !glissementCommence)) {
+        if (glissementCommence) annulerGlissementVisuel();
+        return;
+      }
+
+      if (!glissementCommence) {
+        if (deltaCourant < SEUIL_DEADZONE_SHEET_PX) return;
+        glissementCommence = true;
+        sheetEl.classList.add("dragging");
+      }
+
+      delta = deltaCourant;
+      sheetEl.style.transform = `translateY(${delta}px)`;
+      e.preventDefault();
+    },
+    { passive: false }
+  );
+
+  function onRelache(e) {
+    if (!suivi || e.pointerId !== pointerId) return;
+    suivi = false;
+    pointerId = null;
+    if (!glissementCommence) return; // simple tap/clic : on ne touche à rien
+
+    if (delta > hauteurSheet * SEUIL_FERMETURE_SHEET_RATIO) {
+      fermerSheetAvecAnimation(sheetEl);
+      glissementCommence = false;
+      delta = 0;
+    } else {
+      annulerGlissementVisuel(); // rebond doux vers la position ouverte
+    }
+  }
+
+  sheetEl.addEventListener("pointerup", onRelache);
+  sheetEl.addEventListener("pointercancel", onRelache);
+}
+
+for (const name of SHEETS) {
+  rendreSheetGlissable(document.getElementById(`sheet-${name}`));
+}
+
 openSheet("itineraire");
 
 // ---------- Sélection d'un point sur la carte ----------

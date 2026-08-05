@@ -372,6 +372,27 @@ html, body {
   transition: opacity 0.22s ease, transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Désactive la transition CSS pendant un glissement actif au doigt (le panneau doit
+   suivre le doigt image par image) et pendant le nettoyage instantané après une
+   fermeture par glissement (voir fermerSheetAvecAnimation dans app.js). */
+.sheet.dragging {
+  transition: none;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-muted);
+  margin: 8px auto 0;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.sheet.dragging .sheet-handle {
+  cursor: grabbing;
+}
+
 .sheet-header {
   display: flex;
   align-items: center;
