@@ -6,7 +6,7 @@
   --border: rgba(255, 255, 255, 0.09);
   --text: #f5f5f5;
   --text-secondary: #a8a8a8;
-  --text-muted: #777;
+  --text-muted: #999;
   --accent: #fc4c02;
   --accent-hover: #e04502;
   --accent-text: #17100b;
@@ -615,7 +615,7 @@ button:disabled {
 }
 
 @media (hover: hover) {
-  button:hover:not(:disabled):not(.active):not(.btn-supprimer-signalement) {
+  button:hover:not(:disabled):not(.active):not(.btn-supprimer-signalement):not([type="submit"]):not(#btn-demarrer-nav):not(.btn-mini-accent) {
     background: var(--card-3);
   }
 
@@ -1256,6 +1256,9 @@ button[type="submit"]:disabled {
   font-size: 14px;
   font-weight: 700;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ami-info .ami-email {
@@ -1274,7 +1277,7 @@ button[type="submit"]:disabled {
 
 .btn-mini {
   width: auto;
-  min-height: 36px;
+  min-height: 44px;
   padding: 6px 10px;
   font-size: 13px;
   white-space: nowrap;
@@ -1293,6 +1296,13 @@ button[type="submit"]:disabled {
 .btn-mini-accent:active:not(:disabled) {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
+}
+
+@media (hover: hover) {
+  .btn-mini-accent:hover:not(:disabled) {
+    background: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
 }
 
 /* ---------- Écrans larges (tablette / desktop) ---------- */
