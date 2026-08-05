@@ -77,6 +77,15 @@ const authTabs = document.querySelectorAll(".auth-tab");
 const profilNomEl = document.getElementById("profil-nom");
 const profilEmailEl = document.getElementById("profil-email");
 const btnLogout = document.getElementById("btn-logout");
+const btnVoirStats = document.getElementById("btn-voir-stats");
+const btnStatsRetour = document.getElementById("btn-stats-retour");
+const statsDistanceTotaleEl = document.getElementById("stats-distance-totale");
+const statsDeniveleCumuleEl = document.getElementById("stats-denivele-cumule");
+const statsNbSortiesEl = document.getElementById("stats-nb-sorties");
+const statsDureeTotaleEl = document.getElementById("stats-duree-totale");
+const statsRecordDistanceEl = document.getElementById("stats-record-distance");
+const statsRecordDeniveleEl = document.getElementById("stats-record-denivele");
+const statsVideEl = document.getElementById("stats-vide");
 
 function showAuthScreen() {
   authScreenEl.classList.remove("hidden");
@@ -173,6 +182,34 @@ btnLogout.addEventListener("click", async () => {
   showAuthScreen();
   closeAllSheets();
 });
+
+async function fetchStats() {
+  try {
+    const resp = await apiFetch("/historique/stats");
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const stats = await resp.json();
+
+    statsVideEl.classList.toggle("hidden", stats.nb_sorties > 0);
+    statsDistanceTotaleEl.textContent = stats.distance_totale_km.toFixed(2);
+    statsDeniveleCumuleEl.textContent = Math.round(stats.denivele_positif_cumule_m);
+    statsNbSortiesEl.textContent = stats.nb_sorties;
+    statsDureeTotaleEl.textContent = formatDureeS(stats.duree_totale_s);
+    statsRecordDistanceEl.textContent =
+      stats.record_distance_km != null ? stats.record_distance_km.toFixed(2) : "—";
+    statsRecordDeniveleEl.textContent =
+      stats.record_denivele_m != null ? Math.round(stats.record_denivele_m) : "—";
+  } catch (err) {
+    console.error("Erreur chargement des statistiques :", err);
+  }
+}
+
+btnVoirStats.addEventListener("click", () => {
+  openSheet("stats");
+  document.querySelector('.tab-btn[data-sheet="profil"]')?.classList.add("active");
+  fetchStats();
+});
+
+btnStatsRetour.addEventListener("click", () => openSheet("profil"));
 
 async function verifierSession() {
   if (!getToken()) {
@@ -277,7 +314,16 @@ const OWM_ATTRIBUTION = '&copy; <a href="https://openweathermap.org">OpenWeather
 function owmLayer(layerName) {
   return L.tileLayer(
     `https://tile.openweathermap.org/map/${layerName}/{z}/{x}/{y}.png?appid=${OWM_API_KEY}`,
-    { attribution: OWM_ATTRIBUTION, opacity: 0.6, maxZoom: 19 }
+    {
+      attribution: OWM_ATTRIBUTION,
+      opacity: 0.6,
+      maxZoom: 19,
+      // Les tuiles météo OWM n'ont de vraies données que jusqu'au zoom 10 (au-delà,
+      // l'API renvoie un PNG transparent 200 OK, donc la couche "disparaît" sans
+      // erreur visible). maxNativeZoom fait upscaler les tuiles du zoom 10 au lieu
+      // d'aller chercher des tuiles vides à un zoom plus poussé.
+      maxNativeZoom: 10,
+    }
   );
 }
 
@@ -372,8 +418,13 @@ const rowDistanceRestanteEl = document.getElementById("row-distance-restante");
 const resDistanceRestanteEl = document.getElementById("res-distance-restante");
 const rowDeniveleRestantEl = document.getElementById("row-denivele-restant");
 const resDeniveleRestantEl = document.getElementById("res-denivele-restant");
+const rowTempsRestantEl = document.getElementById("row-temps-restant");
+const resTempsRestantEl = document.getElementById("res-temps-restant");
+const rowHeureArriveeEl = document.getElementById("row-heure-arrivee");
+const resHeureArriveeEl = document.getElementById("res-heure-arrivee");
 const btnDemarrerNav = document.getElementById("btn-demarrer-nav");
-const btnArreterNav = document.getElementById("btn-arreter-nav");
+const btnTerminerNav = document.getElementById("btn-terminer-nav");
+const terminerNavMsgEl = document.getElementById("terminer-nav-msg");
 const meteoPanelEl = document.getElementById("meteo-panel");
 const meteoIconEl = document.getElementById("meteo-icon");
 const meteoTempEl = document.getElementById("meteo-temp");
@@ -406,7 +457,7 @@ const btnPointsPratiquesToggle = document.getElementById("btn-points-pratiques-t
 
 // ---------- Bottom sheets / barre d'onglets ----------
 
-const SHEETS = ["itineraire", "suggestions", "historique", "signalement", "profil"];
+const SHEETS = ["itineraire", "suggestions", "historique", "signalement", "profil", "stats"];
 
 function closeAllSheets() {
   for (const name of SHEETS) {
@@ -418,7 +469,8 @@ function closeAllSheets() {
 function openSheet(name) {
   closeAllSheets();
   document.getElementById(`sheet-${name}`).classList.add("open");
-  document.querySelector(`.tab-btn[data-sheet="${name}"]`).classList.add("active");
+  // Certaines sheets (ex. "stats") ne sont pas rattachées à un onglet de la tabbar.
+  document.querySelector(`.tab-btn[data-sheet="${name}"]`)?.classList.add("active");
 }
 
 document.querySelectorAll(".tab-btn").forEach((btn) => {
@@ -623,6 +675,33 @@ function deniveleRestantSurTrace(idxProche) {
   return denivele;
 }
 
+// Distance et dénivelé positif entre deux points quelconques du tracé (utilisé pour
+// afficher "distance/dénivelé jusqu'à ce point pratique" depuis le départ ou la
+// position GPS actuelle, pas seulement jusqu'à l'arrivée).
+function distanceEntreIndicesSurTrace(idxA, idxB) {
+  const debut = Math.min(idxA, idxB);
+  const fin = Math.max(idxA, idxB);
+  let distance = 0;
+  for (let i = debut; i < fin; i++) {
+    const [lat1, lon1] = currentTraceCoords[i];
+    const [lat2, lon2] = currentTraceCoords[i + 1];
+    distance += haversineMetres(lat1, lon1, lat2, lon2);
+  }
+  return distance;
+}
+
+function deniveleEntreIndicesSurTrace(idxA, idxB) {
+  const debut = Math.min(idxA, idxB);
+  const fin = Math.max(idxA, idxB);
+  let denivele = 0;
+  for (let i = debut; i < fin; i++) {
+    const ele1 = currentTraceCoords[i][2] ?? 0;
+    const ele2 = currentTraceCoords[i + 1][2] ?? 0;
+    if (ele2 > ele1) denivele += ele2 - ele1;
+  }
+  return denivele;
+}
+
 function showGpsError(text) {
   gpsErrorText.textContent = text;
   gpsErrorBanner.classList.remove("hidden");
@@ -638,6 +717,15 @@ function onGpsPosition(position) {
     gpsMarker = L.marker(latlng, { icon: gpsIcon, zIndexOffset: 1000 }).addTo(map);
   }
 
+  if (navigationActive) {
+    traceReellePoints.push({
+      lat: latlng.lat,
+      lon: latlng.lng,
+      ele: position.coords.altitude,
+      t: position.timestamp ?? Date.now(),
+    });
+  }
+
   if (currentTraceCoords && currentTraceCoords.length > 1) {
     const { idxProche, distProche } = pointTraceLePlusProche(latlng);
     const restantM = distanceRestanteSurTrace(idxProche, distProche);
@@ -645,8 +733,20 @@ function onGpsPosition(position) {
     rowDistanceRestanteEl.classList.remove("hidden");
 
     if (navigationActive) {
-      resDeniveleRestantEl.textContent = Math.round(deniveleRestantSurTrace(idxProche));
+      const deniveleRestantVal = deniveleRestantSurTrace(idxProche);
+      resDeniveleRestantEl.textContent = Math.round(deniveleRestantVal);
       rowDeniveleRestantEl.classList.remove("hidden");
+
+      const tempsRestantMin = estimerTempsRestantMin(restantM / 1000, deniveleRestantVal);
+      resTempsRestantEl.textContent = formatDureeS(tempsRestantMin * 60);
+      rowTempsRestantEl.classList.remove("hidden");
+
+      const heureArrivee = new Date(Date.now() + tempsRestantMin * 60000);
+      resHeureArriveeEl.textContent = heureArrivee.toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      rowHeureArriveeEl.classList.remove("hidden");
 
       if (traceParcourueLine) {
         traceParcourueLine.setLatLngs(
@@ -720,13 +820,16 @@ const SEUIL_HORS_TRACE_M = 80;
 let navigationActive = false;
 let traceParcourueLine = null;
 let horsTraceActif = false;
+let traceReellePoints = []; // positions GPS enregistrées pendant la navigation, pour les stats réelles
 
 function demarrerNavigation() {
   if (!currentTraceCoords) return;
   navigationActive = true;
   horsTraceActif = false;
+  traceReellePoints = [];
   btnDemarrerNav.classList.add("hidden");
-  btnArreterNav.classList.remove("hidden");
+  btnTerminerNav.classList.remove("hidden");
+  terminerNavMsgEl.classList.add("hidden");
   traceParcourueLine = L.polyline([], { color: "#999", weight: 5, opacity: 0.85 }).addTo(map);
   if (!gpsActive) startGpsTracking();
 }
@@ -735,19 +838,147 @@ function demarrerNavigation() {
 function arreterNavigation() {
   navigationActive = false;
   btnDemarrerNav.classList.remove("hidden");
-  btnArreterNav.classList.add("hidden");
+  btnTerminerNav.classList.add("hidden");
   if (traceParcourueLine) {
     traceParcourueLine.remove();
     traceParcourueLine = null;
   }
   rowDeniveleRestantEl.classList.add("hidden");
+  rowTempsRestantEl.classList.add("hidden");
+  rowHeureArriveeEl.classList.add("hidden");
   gpsErrorBanner.classList.add("hidden");
   horsTraceActif = false;
   stopGpsTracking();
 }
 
+// Calcule les stats réelles (distance, dénivelé +/-, durée, vitesses) à partir
+// des positions GPS enregistrées pendant la navigation. Retourne null si trop
+// peu de points ont été enregistrés pour un calcul significatif.
+function calculerStatsReelles(points) {
+  if (points.length < 2) return null;
+
+  let distanceM = 0;
+  let denivelePositifM = 0;
+  let deniveleNegatifM = 0;
+  let vitesseMaxKmh = 0;
+
+  let dernierPointAvecEle = points[0].ele != null ? points[0] : null;
+
+  for (let i = 1; i < points.length; i++) {
+    const prec = points[i - 1];
+    const courant = points[i];
+    const segmentM = haversineMetres(prec.lat, prec.lon, courant.lat, courant.lon);
+    distanceM += segmentM;
+
+    const dtMs = courant.t - prec.t;
+    if (dtMs >= 1000) {
+      const vitesseKmh = (segmentM / 1000) / (dtMs / 3600000);
+      if (vitesseKmh > vitesseMaxKmh) vitesseMaxKmh = vitesseKmh;
+    }
+
+    if (courant.ele != null) {
+      if (dernierPointAvecEle) {
+        const deltaEle = courant.ele - dernierPointAvecEle.ele;
+        if (deltaEle > 0) denivelePositifM += deltaEle;
+        else deniveleNegatifM += -deltaEle;
+      }
+      dernierPointAvecEle = courant;
+    }
+  }
+
+  const dureeS = (points[points.length - 1].t - points[0].t) / 1000;
+  const distanceKm = distanceM / 1000;
+  const vitesseMoyenneKmh = dureeS > 0 ? distanceKm / (dureeS / 3600) : 0;
+
+  return {
+    distanceKm,
+    denivelePositifM,
+    deniveleNegatifM,
+    dureeS,
+    vitesseMoyenneKmh,
+    vitesseMaxKmh,
+  };
+}
+
+// ---------- Estimation du temps restant / heure d'arrivée en navigation ----------
+
+const VITESSE_MARCHE_DEFAUT_KMH = 4; // estimation standard tant qu'on n'a pas assez de recul GPS
+const DUREE_MIN_POUR_VITESSE_REELLE_S = 120; // sous ce seuil, la vitesse mesurée est trop bruitée
+
+// Vitesse de marche à utiliser pour l'ETA : mesurée en temps réel sur la portion déjà
+// parcourue de la rando en cours dès qu'il y a assez de recul, sinon valeur par défaut.
+function estimerVitesseActuelleKmh() {
+  const stats = calculerStatsReelles(traceReellePoints);
+  if (!stats || stats.dureeS < DUREE_MIN_POUR_VITESSE_REELLE_S) return VITESSE_MARCHE_DEFAUT_KMH;
+  return stats.vitesseMoyenneKmh > 0.5 ? stats.vitesseMoyenneKmh : VITESSE_MARCHE_DEFAUT_KMH;
+}
+
+// Règle de Naismith simplifiée : temps de marche à plat + 10 min par 100 m de dénivelé
+// positif restant, en plus de la vitesse mesurée/estimée.
+function estimerTempsRestantMin(distanceRestanteKm, deniveleRestantM) {
+  const vitesseKmh = estimerVitesseActuelleKmh();
+  const tempsBaseMin = (distanceRestanteKm / vitesseKmh) * 60;
+  const tempsDeniveleMin = (deniveleRestantM / 100) * 10;
+  return tempsBaseMin + tempsDeniveleMin;
+}
+
+async function terminerRando() {
+  const points = traceReellePoints;
+  const itineraireId = currentItineraireId;
+
+  arreterNavigation();
+
+  const stats = calculerStatsReelles(points);
+  if (!stats) {
+    terminerNavMsgEl.textContent =
+      "Pas assez de positions GPS enregistrées pour calculer des statistiques.";
+    terminerNavMsgEl.classList.remove("hidden", "msg-success");
+    terminerNavMsgEl.classList.add("msg-error");
+    return;
+  }
+
+  if (!itineraireId) {
+    terminerNavMsgEl.textContent =
+      `Rando terminée : ${stats.distanceKm.toFixed(2)} km, ` +
+      `${Math.round(stats.denivelePositifM)} m D+ (non enregistrée : itinéraire non sauvegardé).`;
+    terminerNavMsgEl.classList.remove("hidden", "msg-error");
+    terminerNavMsgEl.classList.add("msg-info");
+    return;
+  }
+
+  try {
+    const resp = await apiFetch(`/historique`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        itineraire_id: itineraireId,
+        distance_reelle_km: stats.distanceKm,
+        denivele_positif_reel_m: stats.denivelePositifM,
+        denivele_negatif_reel_m: stats.deniveleNegatifM,
+        duree_reelle_s: stats.dureeS,
+        vitesse_moyenne_kmh: stats.vitesseMoyenneKmh,
+        vitesse_max_kmh: stats.vitesseMaxKmh,
+        trace_reelle: points.map((p) => [p.lat, p.lon, p.ele, new Date(p.t).toISOString()]),
+      }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+
+    terminerNavMsgEl.textContent =
+      `Rando enregistrée : ${stats.distanceKm.toFixed(2)} km, ` +
+      `${Math.round(stats.denivelePositifM)} m D+.`;
+    terminerNavMsgEl.classList.remove("hidden", "msg-error", "msg-info");
+    terminerNavMsgEl.classList.add("msg-success");
+    fetchHistorique();
+  } catch (err) {
+    terminerNavMsgEl.textContent = err.message;
+    terminerNavMsgEl.classList.remove("hidden", "msg-success", "msg-info");
+    terminerNavMsgEl.classList.add("msg-error");
+  }
+}
+
 btnDemarrerNav.addEventListener("click", demarrerNavigation);
-btnArreterNav.addEventListener("click", arreterNavigation);
+btnTerminerNav.addEventListener("click", terminerRando);
 
 // ---------- Risque d'orage (grille de points sur la zone visible) ----------
 
@@ -832,6 +1063,28 @@ function fadeOutMarkerLayer(layerGroup, delay = 220) {
   setTimeout(() => map.removeLayer(layerGroup), delay);
 }
 
+// Construit le contenu du popup d'un point pratique au moment de l'ouverture (pas à la
+// création du marqueur) afin que la distance/le dénivelé reflètent la position GPS
+// actuelle en navigation, plutôt qu'une valeur figée calculée au chargement.
+function pointPratiquePopupHtml(p) {
+  const meta = POINTS_PRATIQUES_META[p.type] || { emoji: "❓", label: "Point pratique" };
+  let infoParcours = "";
+
+  if (currentTraceCoords && currentTraceCoords.length > 1) {
+    const origineLatLng = navigationActive && gpsMarker ? gpsMarker.getLatLng() : departLatLng;
+    if (origineLatLng) {
+      const { idxProche: idxOrigine } = pointTraceLePlusProche(origineLatLng);
+      const { idxProche: idxPoint } = pointTraceLePlusProche(L.latLng(p.lat, p.lon));
+      const distanceKm = distanceEntreIndicesSurTrace(idxOrigine, idxPoint) / 1000;
+      const deniveleM = deniveleEntreIndicesSurTrace(idxOrigine, idxPoint);
+      const depuis = navigationActive ? "votre position" : "le départ";
+      infoParcours = `<br>📏 ${distanceKm.toFixed(2)} km — ⬆️ ${Math.round(deniveleM)} m depuis ${depuis}`;
+    }
+  }
+
+  return `<strong>${meta.emoji} ${meta.label}</strong>${p.nom ? `<br>${p.nom}` : ""}${infoParcours}`;
+}
+
 async function fetchPointsPratiques(traceCoords) {
   pointsPratiquesLayer.clearLayers();
   if (!traceCoords || traceCoords.length === 0) return;
@@ -849,10 +1102,8 @@ async function fetchPointsPratiques(traceCoords) {
     const points = await resp.json();
 
     for (const p of points) {
-      const meta = POINTS_PRATIQUES_META[p.type] || { emoji: "❓", label: "Point pratique" };
-      const popup = `<strong>${meta.emoji} ${meta.label}</strong>${p.nom ? `<br>${p.nom}` : ""}`;
       L.marker([p.lat, p.lon], { icon: pointPratiqueIcon(p.type) })
-        .bindPopup(popup)
+        .bindPopup(() => pointPratiquePopupHtml(p))
         .addTo(pointsPratiquesLayer);
     }
   } catch (err) {
@@ -1265,6 +1516,14 @@ btnMarquerFait.addEventListener("click", async () => {
   }
 });
 
+// Formate une durée en secondes en "Xh YYmin" (ou juste "YYmin" si < 1h).
+function formatDureeS(s) {
+  const totalMin = Math.round(s / 60);
+  const h = Math.floor(totalMin / 60);
+  const min = totalMin % 60;
+  return h > 0 ? `${h}h ${String(min).padStart(2, "0")}min` : `${min}min`;
+}
+
 async function fetchHistorique() {
   try {
     const resp = await apiFetch(`/historique`);
@@ -1278,16 +1537,38 @@ async function fetchHistorique() {
       const li = document.createElement("li");
       const date = new Date(entry.date_realisation).toLocaleDateString("fr-FR");
       const itin = entry.itineraire;
-      if (itin) {
-        li.innerHTML = `
+      const enTete = itin
+        ? `
           <strong>${date}</strong><br>
-          Distance : ${itin.distance_km?.toFixed(2) ?? "?"} km —
-          Dénivelé : ${Math.round(itin.denivele_m ?? 0)} m<br>
           Départ : ${itin.point_depart_lat.toFixed(4)}, ${itin.point_depart_lon.toFixed(4)}
+        `
+        : `<strong>${date}</strong><br>Itinéraire supprimé`;
+
+      const aDesStatsReelles = entry.distance_reelle_km != null;
+      const comparaison = !itin
+        ? ""
+        : aDesStatsReelles
+        ? `
+          <div class="prevu-realise">
+            <div class="prevu-realise-col">
+              <span class="prevu-realise-label">Prévu</span>
+              <span>${itin.distance_km?.toFixed(2) ?? "?"} km</span>
+              <span>${Math.round(itin.denivele_m ?? 0)} m D+</span>
+            </div>
+            <div class="prevu-realise-col prevu-realise-reel">
+              <span class="prevu-realise-label">Réalisé</span>
+              <span>${entry.distance_reelle_km.toFixed(2)} km</span>
+              <span>${Math.round(entry.denivele_positif_reel_m ?? 0)} m D+ / ${Math.round(entry.denivele_negatif_reel_m ?? 0)} m D-</span>
+              <span>${formatDureeS(entry.duree_reelle_s)} — ${entry.vitesse_moyenne_kmh.toFixed(1)} km/h moy. (max ${entry.vitesse_max_kmh.toFixed(1)})</span>
+            </div>
+          </div>
+        `
+        : `
+          Distance prévue : ${itin.distance_km?.toFixed(2) ?? "?"} km —
+          Dénivelé prévu : ${Math.round(itin.denivele_m ?? 0)} m<br>
         `;
-      } else {
-        li.innerHTML = `<strong>${date}</strong><br>Itinéraire supprimé`;
-      }
+
+      li.innerHTML = enTete + comparaison;
       historiqueListeEl.appendChild(li);
     }
   } catch (err) {
@@ -1386,12 +1667,14 @@ function chargerSuggestion(suggestion) {
   resultatEl.classList.add("hidden");
   rowDistanceRestanteEl.classList.add("hidden");
   rowDeniveleRestantEl.classList.add("hidden");
+  rowTempsRestantEl.classList.add("hidden");
+  rowHeureArriveeEl.classList.add("hidden");
   meteoPanelEl.classList.add("hidden");
   photosGalerieEl.classList.add("hidden");
   photosGalerieEl.innerHTML = "";
   if (navigationActive) arreterNavigation();
   btnDemarrerNav.classList.add("hidden");
-  btnArreterNav.classList.add("hidden");
+  btnTerminerNav.classList.add("hidden");
 
   traceLayer.clearLayers();
   L.geoJSON(suggestion.trace_geojson, {
@@ -1462,13 +1745,15 @@ formItineraire.addEventListener("submit", async (e) => {
   resultatEl.classList.add("hidden");
   rowDistanceRestanteEl.classList.add("hidden");
   rowDeniveleRestantEl.classList.add("hidden");
+  rowTempsRestantEl.classList.add("hidden");
+  rowHeureArriveeEl.classList.add("hidden");
   meteoPanelEl.classList.add("hidden");
   photosGalerieEl.classList.add("hidden");
   photosGalerieEl.innerHTML = "";
   btnMarquerFait.classList.add("hidden");
   if (navigationActive) arreterNavigation();
   btnDemarrerNav.classList.add("hidden");
-  btnArreterNav.classList.add("hidden");
+  btnTerminerNav.classList.add("hidden");
   btnGenerer.disabled = true;
   btnGenerer.textContent = "Génération en cours...";
 

@@ -332,6 +332,30 @@ html, body {
   background: var(--card-3);
 }
 
+.sheet-back {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card-2);
+  color: var(--text);
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.sheet-back:active {
+  background: var(--card-3);
+}
+
+.sheet-header:has(.sheet-back) {
+  padding-left: 8px;
+  gap: 8px;
+}
+
+.sheet-header:has(.sheet-back) h2 {
+  flex: 1;
+}
+
 .sheet-body {
   padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
   overflow-y: auto;
@@ -573,6 +597,15 @@ button[type="submit"]:disabled {
   margin-top: 12px;
 }
 
+.stats-records-titre {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+}
+
 .meteo {
   margin-top: 12px;
   font-size: 14px;
@@ -684,6 +717,40 @@ button[type="submit"]:disabled {
 .historique-liste li strong {
   font-size: 14px;
   color: var(--text);
+}
+
+.prevu-realise {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.prevu-realise-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--card-3);
+  border-radius: 6px;
+  padding: 8px 10px;
+  line-height: 1.4;
+}
+
+.prevu-realise-reel {
+  border: 1px solid var(--accent);
+}
+
+.prevu-realise-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+.prevu-realise-reel .prevu-realise-label {
+  color: var(--accent);
 }
 
 .suggestions-liste li {

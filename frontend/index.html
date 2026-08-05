@@ -159,9 +159,20 @@
             <span class="stat-label">Dénivelé restant</span>
           </div>
         </div>
+        <div class="stats-grid">
+          <div id="row-temps-restant" class="stat-card hidden">
+            <span class="stat-value" id="res-temps-restant"></span>
+            <span class="stat-label">Temps restant estimé</span>
+          </div>
+          <div id="row-heure-arrivee" class="stat-card hidden">
+            <span class="stat-value" id="res-heure-arrivee"></span>
+            <span class="stat-label">Arrivée estimée</span>
+          </div>
+        </div>
       </div>
       <button type="button" id="btn-demarrer-nav" class="btn-secondary hidden">🧭 Démarrer la rando</button>
-      <button type="button" id="btn-arreter-nav" class="btn-secondary hidden">🛑 Arrêter la navigation</button>
+      <button type="button" id="btn-terminer-nav" class="btn-secondary hidden">🏁 Terminer la rando</button>
+      <p id="terminer-nav-msg" class="msg hidden"></p>
       <div id="meteo-panel" class="meteo hidden">
         <p class="meteo-main">
           <span id="meteo-icon"></span>
@@ -246,7 +257,53 @@
         <p class="profil-nom" id="profil-nom"></p>
         <p class="profil-email" id="profil-email"></p>
       </div>
+      <button type="button" id="btn-voir-stats" class="btn-secondary">📊 Mes statistiques</button>
       <button type="button" id="btn-logout" class="btn-secondary">🚪 Se déconnecter</button>
+    </div>
+  </div>
+
+  <div id="sheet-stats" class="sheet">
+    <div class="sheet-header">
+      <button type="button" class="sheet-back" id="btn-stats-retour" aria-label="Retour au profil">←</button>
+      <h2>Mes statistiques</h2>
+      <button type="button" class="sheet-close" data-sheet="stats" aria-label="Fermer">✕</button>
+    </div>
+    <div class="sheet-body">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value"><span id="stats-distance-totale"></span><span class="stat-unit">km</span></span>
+          <span class="stat-label">Distance totale</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value"><span id="stats-denivele-cumule"></span><span class="stat-unit">m</span></span>
+          <span class="stat-label">Dénivelé cumulé</span>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value" id="stats-nb-sorties"></span>
+          <span class="stat-label">Sorties</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value" id="stats-duree-totale"></span>
+          <span class="stat-label">Temps total</span>
+        </div>
+      </div>
+      <h3 class="stats-records-titre">Records personnels</h3>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <span class="stat-value"><span id="stats-record-distance"></span><span class="stat-unit">km</span></span>
+          <span class="stat-label">Plus longue sortie</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-value"><span id="stats-record-denivele"></span><span class="stat-unit">m</span></span>
+          <span class="stat-label">Plus gros dénivelé</span>
+        </div>
+      </div>
+      <p id="stats-vide" class="coords hidden">
+        Aucune sortie enregistrée avec suivi GPS pour l'instant. Termine une rando avec
+        "🏁 Terminer la rando" pour commencer à cumuler tes statistiques.
+      </p>
     </div>
   </div>
 

@@ -32,6 +32,26 @@ def _migrer_colonnes_itineraires():
         conn.commit()
 
 
+def _migrer_colonnes_historique():
+    """Ajoute les colonnes de stats réelles (enregistrement GPS pendant la
+    navigation) si la base a été créée avant leur ajout."""
+    with engine.connect() as conn:
+        colonnes = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(rando_historique)")}
+        nouvelles_colonnes = {
+            "trace_reelle": "TEXT",
+            "distance_reelle_km": "FLOAT",
+            "denivele_positif_reel_m": "FLOAT",
+            "denivele_negatif_reel_m": "FLOAT",
+            "duree_reelle_s": "FLOAT",
+            "vitesse_moyenne_kmh": "FLOAT",
+            "vitesse_max_kmh": "FLOAT",
+        }
+        for nom, type_sql in nouvelles_colonnes.items():
+            if nom not in colonnes:
+                conn.exec_driver_sql(f"ALTER TABLE rando_historique ADD COLUMN {nom} {type_sql}")
+        conn.commit()
+
+
 def _migrer_vers_comptes_utilisateurs():
     """Passage au système de comptes utilisateurs (JWT) : signalements et
     historique étaient liés à une identité anonyme localStorage (createur_id /
@@ -55,6 +75,7 @@ async def lifespan(app: FastAPI):
     _migrer_vers_comptes_utilisateurs()
     Base.metadata.create_all(bind=engine)
     _migrer_colonnes_itineraires()
+    _migrer_colonnes_historique()
     yield
 
 

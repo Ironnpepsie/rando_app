@@ -121,6 +121,16 @@ class SignalementOut(BaseModel):
 class RandoHistoriqueCreate(BaseModel):
     itineraire_id: int
     notes: Optional[str] = None
+    # Stats réelles optionnelles, calculées côté client à partir des positions GPS
+    # enregistrées pendant la navigation ("Terminer la rando"). Absentes lorsque
+    # l'entrée vient d'un simple "Marquer comme fait" sans suivi GPS.
+    trace_reelle: Optional[Any] = None
+    distance_reelle_km: Optional[float] = None
+    denivele_positif_reel_m: Optional[float] = None
+    denivele_negatif_reel_m: Optional[float] = None
+    duree_reelle_s: Optional[float] = None
+    vitesse_moyenne_kmh: Optional[float] = None
+    vitesse_max_kmh: Optional[float] = None
 
 
 class RandoHistoriqueOut(BaseModel):
@@ -132,6 +142,21 @@ class RandoHistoriqueOut(BaseModel):
     date_realisation: datetime
     notes: Optional[str] = None
     itineraire: Optional[ItineraireResume] = None
+    distance_reelle_km: Optional[float] = None
+    denivele_positif_reel_m: Optional[float] = None
+    denivele_negatif_reel_m: Optional[float] = None
+    duree_reelle_s: Optional[float] = None
+    vitesse_moyenne_kmh: Optional[float] = None
+    vitesse_max_kmh: Optional[float] = None
+
+
+class HistoriqueStats(BaseModel):
+    nb_sorties: int
+    distance_totale_km: float
+    denivele_positif_cumule_m: float
+    duree_totale_s: float
+    record_distance_km: Optional[float] = None
+    record_denivele_m: Optional[float] = None
 
 
 # --- Guide audio ---

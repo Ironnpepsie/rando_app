@@ -116,4 +116,15 @@ class RandoHistorique(Base):
     date_realisation = Column(DateTime, default=datetime.utcnow)
     notes = Column(Text, nullable=True)
 
+    # Stats réelles enregistrées via le GPS pendant la navigation (feature "Terminer
+    # la rando"), distinctes des stats prévues de l'itinéraire. Restent nulles pour
+    # les entrées créées via "Marquer comme fait" sans suivi GPS.
+    trace_reelle = Column(JSON, nullable=True)  # [[lat, lon, ele, timestamp_iso], ...]
+    distance_reelle_km = Column(Float, nullable=True)
+    denivele_positif_reel_m = Column(Float, nullable=True)
+    denivele_negatif_reel_m = Column(Float, nullable=True)
+    duree_reelle_s = Column(Float, nullable=True)
+    vitesse_moyenne_kmh = Column(Float, nullable=True)
+    vitesse_max_kmh = Column(Float, nullable=True)
+
     itineraire = relationship("Itineraire", back_populates="historiques")

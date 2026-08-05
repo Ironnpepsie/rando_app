@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import auth
@@ -36,4 +37,39 @@ def lister_historique(
         .filter(models.RandoHistorique.user_id == current_user.id)
         .order_by(models.RandoHistorique.date_realisation.desc())
         .all()
+    )
+
+
+@router.get("/stats", response_model=schemas.HistoriqueStats)
+def statistiques_personnelles(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user),
+):
+    # Seules les sorties avec des stats réelles enregistrées (suivi GPS terminé)
+    # comptent dans les cumuls : une entrée "Marquer comme fait" sans trace GPS
+    # n'a pas de distance_reelle_km et n'est donc pas comptabilisée ici.
+    resultat = (
+        db.query(
+            func.count(models.RandoHistorique.id),
+            func.coalesce(func.sum(models.RandoHistorique.distance_reelle_km), 0.0),
+            func.coalesce(func.sum(models.RandoHistorique.denivele_positif_reel_m), 0.0),
+            func.coalesce(func.sum(models.RandoHistorique.duree_reelle_s), 0.0),
+            func.max(models.RandoHistorique.distance_reelle_km),
+            func.max(models.RandoHistorique.denivele_positif_reel_m),
+        )
+        .filter(
+            models.RandoHistorique.user_id == current_user.id,
+            models.RandoHistorique.distance_reelle_km.isnot(None),
+        )
+        .one()
+    )
+    nb_sorties, distance_totale, denivele_cumule, duree_totale, record_distance, record_denivele = resultat
+
+    return schemas.HistoriqueStats(
+        nb_sorties=nb_sorties,
+        distance_totale_km=distance_totale,
+        denivele_positif_cumule_m=denivele_cumule,
+        duree_totale_s=duree_totale,
+        record_distance_km=record_distance,
+        record_denivele_m=record_denivele,
     )

@@ -227,6 +227,22 @@ def points_pratiques(payload: PointsPratiquesRequest):
     for el in resp.json().get("elements", []):
         tags = el.get("tags", {})
 
+        # Un point d'eau/refuge/abri est un objet ponctuel : exclut tout élément qui
+        # porte aussi un tag de cours d'eau ou de plan d'eau (waterway=stream/river/...,
+        # natural=water), pour ne jamais confondre une rivière avec un point pratique
+        # même si elle était mal taguée amenity=drinking_water par erreur dans OSM.
+        if "waterway" in tags or tags.get("natural") == "water":
+            continue
+
+        # amenity=shelter capte aussi les abribus/quais de gare (shelter_type=
+        # public_transport) et les vestiaires (changing_rooms) : ce ne sont pas des
+        # abris de randonnée, on les exclut explicitement.
+        if tags.get("amenity") == "shelter" and tags.get("shelter_type") in (
+            "public_transport",
+            "changing_rooms",
+        ):
+            continue
+
         type_point = None
         for (cle, valeur), nom_type in TAGS_POINTS_PRATIQUES.items():
             if tags.get(cle) == valeur:
