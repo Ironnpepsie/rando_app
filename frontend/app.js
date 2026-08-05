@@ -8,6 +8,69 @@ function apiFetch(path, options = {}) {
 }
 const DEFAULT_CENTER = [45.9237, 6.8694]; // Chamonix
 
+// ---------- Aide : chargement, erreurs réseau, toast, confirmation ----------
+
+// Fallback lisible quand le backend ne fournit pas de "detail" (ex : erreur 500 imprévue,
+// ou proxy hors-service renvoyant une page HTML au lieu de JSON).
+function messageHttpGenerique(status) {
+  return status >= 500
+    ? "Le serveur rencontre un problème. Réessaie dans un instant."
+    : `Une erreur est survenue (${status}). Réessaie dans un instant.`;
+}
+
+// Message utilisateur à partir d'une erreur JS attrapée lors d'un appel réseau. Un
+// TypeError vient de fetch() qui n'a même pas pu joindre le serveur (coupure réseau,
+// backend injoignable, timeout) ; les autres erreurs portent déjà un message lisible
+// (détail renvoyé par le backend, ou messageHttpGenerique ci-dessus).
+function messageErreurReseau(err) {
+  if (err instanceof TypeError) {
+    return "Connexion impossible. Vérifie ta connexion et réessaie dans un instant.";
+  }
+  return err.message || "Une erreur est survenue. Réessaie dans un instant.";
+}
+
+// Bascule un bouton en "état de chargement" (désactivé + texte de patience), et restaure
+// automatiquement son texte d'origine à la fin (mémorisé sur le bouton lui-même, pour que
+// l'appelant n'ait pas à s'en souvenir).
+function definirChargementBouton(btn, chargement, texteChargement = "...") {
+  if (chargement) {
+    if (btn.dataset.texteOriginal == null) btn.dataset.texteOriginal = btn.textContent;
+    btn.textContent = texteChargement;
+    btn.disabled = true;
+  } else {
+    if (btn.dataset.texteOriginal != null) {
+      btn.textContent = btn.dataset.texteOriginal;
+      delete btn.dataset.texteOriginal;
+    }
+    btn.disabled = false;
+  }
+}
+
+// Affiche un texte "⏳ Chargement..." dans une liste en attente de résultats (remplacé par
+// le contenu réel ou vidé une fois la requête terminée), pour les listes sans indicateur dédié.
+function afficherChargementListe(ulEl, texte = "⏳ Chargement...") {
+  const li = document.createElement("li");
+  li.className = "liste-chargement";
+  li.textContent = texte;
+  ulEl.innerHTML = "";
+  ulEl.appendChild(li);
+}
+
+const toastEl = document.getElementById("toast");
+let toastTimer = null;
+
+// Message discret et temporaire pour les actions en arrière-plan qui n'ont pas de zone de
+// message dédiée (ex : points pratiques, risque d'orage, listes d'amis rafraîchies en tâche
+// de fond). Les actions avec une zone de message propre (formulaires, boutons...) l'utilisent
+// directement plutôt que ce toast générique.
+function afficherToast(message, type = "error", duree = 4000) {
+  toastEl.textContent = message;
+  toastEl.classList.remove("hidden", "toast-info");
+  if (type === "info") toastEl.classList.add("toast-info");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.add("hidden"), duree);
+}
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch((err) => {
@@ -168,6 +231,10 @@ inputPhotoProfil.addEventListener("change", async () => {
     return;
   }
 
+  btnChangerPhoto.disabled = true;
+  btnChangerPhoto.textContent = "⏳";
+  photoProfilMsgEl.classList.add("hidden");
+
   try {
     const dataUrl = await new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -182,14 +249,17 @@ inputPhotoProfil.addEventListener("change", async () => {
       body: JSON.stringify({ photo_base64: dataUrl }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
 
     currentUser = data;
     localStorage.setItem(USER_KEY, JSON.stringify(data));
     afficherProfil();
     photoProfilMsgEl.classList.add("hidden");
   } catch (err) {
-    afficherMsgPhotoProfil(err.message, "msg-error");
+    afficherMsgPhotoProfil(messageErreurReseau(err), "msg-error");
+  } finally {
+    btnChangerPhoto.disabled = false;
+    btnChangerPhoto.textContent = "📷";
   }
 });
 
@@ -213,7 +283,7 @@ formLogin.addEventListener("submit", async (e) => {
   e.preventDefault();
   authErrorEl.classList.add("hidden");
   const submitBtn = formLogin.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
+  definirChargementBouton(submitBtn, true, "Connexion en cours...");
   try {
     const resp = await apiFetch("/auth/login", {
       method: "POST",
@@ -224,15 +294,15 @@ formLogin.addEventListener("submit", async (e) => {
       }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
     setSession(data.token, data.user);
     afficherProfil();
     hideAuthScreen();
     formLogin.reset();
   } catch (err) {
-    afficherErreurAuth(err.message);
+    afficherErreurAuth(messageErreurReseau(err));
   } finally {
-    submitBtn.disabled = false;
+    definirChargementBouton(submitBtn, false);
   }
 });
 
@@ -240,7 +310,7 @@ formRegister.addEventListener("submit", async (e) => {
   e.preventDefault();
   authErrorEl.classList.add("hidden");
   const submitBtn = formRegister.querySelector('button[type="submit"]');
-  submitBtn.disabled = true;
+  definirChargementBouton(submitBtn, true, "Création du compte...");
   try {
     const resp = await apiFetch("/auth/register", {
       method: "POST",
@@ -252,19 +322,20 @@ formRegister.addEventListener("submit", async (e) => {
       }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
     setSession(data.token, data.user);
     afficherProfil();
     hideAuthScreen();
     formRegister.reset();
   } catch (err) {
-    afficherErreurAuth(err.message);
+    afficherErreurAuth(messageErreurReseau(err));
   } finally {
-    submitBtn.disabled = false;
+    definirChargementBouton(submitBtn, false);
   }
 });
 
 btnLogout.addEventListener("click", async () => {
+  if (!confirm("Se déconnecter ?")) return;
   try {
     await apiFetch("/auth/logout", { method: "POST" });
   } catch {
@@ -278,7 +349,7 @@ btnLogout.addEventListener("click", async () => {
 async function fetchStats() {
   try {
     const resp = await apiFetch("/historique/stats");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const stats = await resp.json();
 
     statsVideEl.classList.toggle("hidden", stats.nb_sorties > 0);
@@ -292,6 +363,7 @@ async function fetchStats() {
       stats.record_denivele_m != null ? Math.round(stats.record_denivele_m) : "—";
   } catch (err) {
     console.error("Erreur chargement des statistiques :", err);
+    afficherToast(messageErreurReseau(err));
   }
 }
 
@@ -314,15 +386,24 @@ async function verifierSession() {
   hideAuthScreen();
   try {
     const resp = await apiFetch("/auth/me");
-    if (!resp.ok) throw new Error("session invalide");
+    if (!resp.ok) {
+      // Token réellement rejeté par le serveur (expiré, invalide...) : la session
+      // n'est plus valable, retour à l'écran de connexion.
+      clearSession();
+      showAuthScreen();
+      return;
+    }
     const user = await resp.json();
     currentUser = user;
     localStorage.setItem(USER_KEY, JSON.stringify(user));
     afficherProfil();
     hideAuthScreen();
-  } catch {
-    clearSession();
-    showAuthScreen();
+  } catch (err) {
+    // Échec réseau (backend injoignable) plutôt qu'un rejet du token : on garde l'utilisateur
+    // connecté avec les données déjà affichées en optimiste plutôt que de le déconnecter pour
+    // un simple problème de connexion.
+    console.error("Erreur de vérification de session :", err);
+    afficherToast(messageErreurReseau(err));
   }
 }
 
@@ -521,6 +602,8 @@ const btnDemarrerNav = document.getElementById("btn-demarrer-nav");
 const btnTerminerNav = document.getElementById("btn-terminer-nav");
 const terminerNavMsgEl = document.getElementById("terminer-nav-msg");
 const meteoPanelEl = document.getElementById("meteo-panel");
+const meteoLoadingEl = document.getElementById("meteo-loading");
+const meteoMainEl = document.querySelector("#meteo-panel .meteo-main");
 const meteoIconEl = document.getElementById("meteo-icon");
 const meteoTempEl = document.getElementById("meteo-temp");
 const meteoDescEl = document.getElementById("meteo-desc");
@@ -603,26 +686,25 @@ document.querySelectorAll(".sheet-close").forEach((btn) => {
 const SEUIL_FERMETURE_SHEET_RATIO = 1 / 3; // fraction de la hauteur du panneau à dépasser pour le fermer
 const SEUIL_DEADZONE_SHEET_PX = 6; // ignore les micros-mouvements pour ne pas gêner un simple tap
 
-// Anime la sortie complète du panneau vers le bas avant de le fermer "pour de vrai"
-// (retrait de la classe "open", cohérent avec le bouton ✕). Le nettoyage final réutilise
-// la classe "dragging" (transition: none) pour repasser instantanément à l'état fermé
-// normal sans provoquer de sursaut visuel entre les deux animations.
+const DUREE_FERMETURE_SHEET_MS = 280; // doit correspondre à la durée de transition "transform" de .sheet.open
+
+// Anime la sortie complète du panneau vers le bas avant de le fermer "pour de vrai" (retrait
+// de la classe "open", cohérent avec le bouton ✕). Le nettoyage final réutilise la classe
+// "dragging" (transition: none) pour repasser instantanément à l'état fermé normal sans
+// provoquer de sursaut visuel entre les deux animations. Le minutage est piloté par
+// setTimeout (durée fixe alignée sur la transition CSS) plutôt que "transitionend" : le
+// panneau transitionne aussi sur "opacity", donc un seul listener "transitionend" ne peut
+// pas fiabilement distinguer/attendre spécifiquement la fin de "transform".
 function fermerSheetAvecAnimation(sheetEl) {
   sheetEl.classList.remove("dragging");
   sheetEl.style.transform = "translateY(100%)";
-  sheetEl.addEventListener(
-    "transitionend",
-    function onEnd(e) {
-      if (e.propertyName !== "transform") return;
-      sheetEl.removeEventListener("transitionend", onEnd);
-      sheetEl.classList.add("dragging");
-      closeAllSheets();
-      sheetEl.style.transform = "";
-      void sheetEl.offsetHeight; // force le reflow avant de réactiver la transition
-      sheetEl.classList.remove("dragging");
-    },
-    { once: true }
-  );
+  setTimeout(() => {
+    sheetEl.classList.add("dragging");
+    closeAllSheets();
+    sheetEl.style.transform = "";
+    void sheetEl.offsetHeight; // force le reflow avant de réactiver la transition
+    sheetEl.classList.remove("dragging");
+  }, DUREE_FERMETURE_SHEET_MS);
 }
 
 // Rend un panneau fermable en le faisant glisser vers le bas au doigt (ou à la souris,
@@ -1343,6 +1425,10 @@ async function terminerRando() {
     return;
   }
 
+  terminerNavMsgEl.textContent = "⏳ Enregistrement de la rando...";
+  terminerNavMsgEl.classList.remove("hidden", "msg-error", "msg-success");
+  terminerNavMsgEl.classList.add("msg-info");
+
   try {
     const resp = await apiFetch(`/historique`, {
       method: "POST",
@@ -1359,7 +1445,7 @@ async function terminerRando() {
       }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
 
     terminerNavMsgEl.textContent =
       `Rando enregistrée : ${stats.distanceKm.toFixed(2)} km, ` +
@@ -1368,7 +1454,7 @@ async function terminerRando() {
     terminerNavMsgEl.classList.add("msg-success");
     fetchHistorique();
   } catch (err) {
-    terminerNavMsgEl.textContent = err.message;
+    terminerNavMsgEl.textContent = messageErreurReseau(err);
     terminerNavMsgEl.classList.remove("hidden", "msg-success", "msg-info");
     terminerNavMsgEl.classList.add("msg-error");
   }
@@ -1405,7 +1491,7 @@ async function fetchOrageGrille() {
   });
   try {
     const resp = await apiFetch(`/meteo/orage-grille?${params}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const points = await resp.json();
     orageLayer.clearLayers();
     for (const point of points) {
@@ -1413,6 +1499,7 @@ async function fetchOrageGrille() {
     }
   } catch (err) {
     console.error("Erreur chargement risque orage :", err);
+    afficherToast(`Risque d'orage : ${messageErreurReseau(err)}`);
   }
 }
 
@@ -1486,6 +1573,7 @@ async function fetchPointsPratiques(traceCoords) {
   pointsPratiquesLayer.clearLayers();
   if (!traceCoords || traceCoords.length === 0) return;
 
+  btnPointsPratiquesToggle.classList.add("loading");
   try {
     const resp = await apiFetch(`/sentiers/points-pratiques`, {
       method: "POST",
@@ -1495,7 +1583,7 @@ async function fetchPointsPratiques(traceCoords) {
         rayon_m: 300,
       }),
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const points = await resp.json();
 
     for (const p of points) {
@@ -1505,6 +1593,9 @@ async function fetchPointsPratiques(traceCoords) {
     }
   } catch (err) {
     console.error("Erreur chargement points pratiques :", err);
+    afficherToast(`Points pratiques : ${messageErreurReseau(err)}`);
+  } finally {
+    btnPointsPratiquesToggle.classList.remove("loading");
   }
 }
 
@@ -1562,14 +1653,18 @@ function selectionnerLieu(feature) {
 async function rechercherLieu(query) {
   const centre = map.getCenter();
   const params = new URLSearchParams({ q: query, lat: centre.lat, lon: centre.lng });
+
+  searchResultsEl.innerHTML = '<div class="search-result-item">⏳ Recherche...</div>';
+  searchResultsEl.classList.remove("hidden");
+
   try {
     const resp = await apiFetch(`/geocode/search?${params}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const data = await resp.json();
     renderSearchResults(data.features || []);
   } catch (err) {
     console.error("Erreur recherche de lieu :", err);
-    searchResultsEl.innerHTML = '<div class="search-result-item">Erreur de recherche</div>';
+    searchResultsEl.innerHTML = `<div class="search-result-item">${escapeHtml(messageErreurReseau(err))}</div>`;
     searchResultsEl.classList.remove("hidden");
   }
 }
@@ -1720,7 +1815,7 @@ function renderAllSignalements() {
 
 async function supprimerSignalement(id) {
   const resp = await apiFetch(`/signalements/${id}`, { method: "DELETE" });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
   lastKnownSignalements = lastKnownSignalements.filter((s) => s.id !== Number(id));
   saveSignalementsCache(lastCenter.lat, lastCenter.lon, lastKnownSignalements);
 }
@@ -1728,6 +1823,7 @@ async function supprimerSignalement(id) {
 document.addEventListener("click", async (e) => {
   const btn = e.target.closest(".btn-supprimer-signalement");
   if (!btn) return;
+  if (!confirm("Supprimer ce signalement ?")) return;
 
   if (btn.dataset.tempId) {
     removePendingSignalement(btn.dataset.tempId);
@@ -1744,6 +1840,7 @@ document.addEventListener("click", async (e) => {
     renderAllSignalements();
   } catch (err) {
     console.error("Erreur suppression signalement :", err);
+    afficherToast(messageErreurReseau(err));
     btn.disabled = false;
     btn.textContent = "🗑️ Supprimer";
   }
@@ -1755,7 +1852,7 @@ async function fetchSignalementsProches(lat, lon) {
     const resp = await apiFetch(
       `/signalements/proches?lat=${lat}&lon=${lon}&rayon_km=5`
     );
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const signalements = await resp.json();
     lastKnownSignalements = signalements;
     saveSignalementsCache(lat, lon, signalements);
@@ -1770,6 +1867,7 @@ async function fetchSignalementsProches(lat, lon) {
       signalementsCacheNoticeEl.classList.remove("hidden");
     } else {
       lastKnownSignalements = [];
+      afficherToast(`Signalements : ${messageErreurReseau(err)}`);
     }
   }
   renderAllSignalements();
@@ -1835,16 +1933,33 @@ setInterval(() => {
   if (navigator.onLine) syncPendingSignalements();
 }, 20000);
 
-btnSyncNow.addEventListener("click", syncPendingSignalements);
+btnSyncNow.addEventListener("click", async () => {
+  definirChargementBouton(btnSyncNow, true, "Envoi en cours...");
+  await syncPendingSignalements();
+  definirChargementBouton(btnSyncNow, false);
+  // syncPendingSignalements() reste silencieux pour les tentatives automatiques
+  // (online, minuteur) afin de ne pas spammer ; ici l'utilisateur a demandé l'action
+  // explicitement, donc un échec mérite un retour visible.
+  if (getPendingSignalements().length > 0) {
+    afficherToast("Connexion impossible. Vérifie ta connexion et réessaie dans un instant.");
+  }
+});
 
 btnRefreshSignalements.addEventListener("click", () => {
   fetchSignalementsProches(lastCenter.lat, lastCenter.lon);
 });
 
 async function fetchMeteo(lat, lon) {
+  meteoPanelEl.classList.remove("hidden");
+  meteoMainEl.classList.add("hidden");
+  meteoAlertEl.classList.add("hidden");
+  meteoLoadingEl.textContent = "⏳ Chargement de la météo...";
+  meteoLoadingEl.classList.remove("hidden", "msg-error");
+  meteoLoadingEl.classList.add("msg-info");
+
   try {
     const resp = await apiFetch(`/meteo?lat=${lat}&lon=${lon}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const data = await resp.json();
 
     const current = data.current;
@@ -1867,10 +1982,13 @@ async function fetchMeteo(lat, lon) {
       meteoAlertEl.classList.add("hidden");
     }
 
-    meteoPanelEl.classList.remove("hidden");
+    meteoLoadingEl.classList.add("hidden");
+    meteoMainEl.classList.remove("hidden");
   } catch (err) {
     console.error("Erreur chargement météo :", err);
-    meteoPanelEl.classList.add("hidden");
+    meteoLoadingEl.textContent = `⚠️ ${messageErreurReseau(err)}`;
+    meteoLoadingEl.classList.remove("hidden", "msg-info");
+    meteoLoadingEl.classList.add("msg-error");
   }
 }
 
@@ -1885,7 +2003,9 @@ function resetMarquerFait(itineraireId) {
 btnMarquerFait.addEventListener("click", async () => {
   if (!currentItineraireId) return;
 
+  const texteOriginal = btnMarquerFait.textContent;
   btnMarquerFait.disabled = true;
+  btnMarquerFait.textContent = "Enregistrement...";
   marquerFaitMsgEl.classList.add("hidden");
 
   try {
@@ -1898,7 +2018,7 @@ btnMarquerFait.addEventListener("click", async () => {
     });
 
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
 
     btnMarquerFait.textContent = "✔️ Marqué comme fait";
     marquerFaitMsgEl.textContent = "Rando ajoutée à votre historique.";
@@ -1907,7 +2027,8 @@ btnMarquerFait.addEventListener("click", async () => {
     fetchHistorique();
   } catch (err) {
     btnMarquerFait.disabled = false;
-    marquerFaitMsgEl.textContent = err.message;
+    btnMarquerFait.textContent = texteOriginal;
+    marquerFaitMsgEl.textContent = messageErreurReseau(err);
     marquerFaitMsgEl.classList.remove("hidden", "msg-success");
     marquerFaitMsgEl.classList.add("msg-error");
   }
@@ -1961,9 +2082,12 @@ function historiqueEntryHtml(entry) {
 }
 
 async function fetchHistorique() {
+  afficherChargementListe(historiqueListeEl);
+  historiqueVideEl.classList.add("hidden");
+
   try {
     const resp = await apiFetch(`/historique`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const entries = await resp.json();
 
     historiqueListeEl.innerHTML = "";
@@ -1976,6 +2100,8 @@ async function fetchHistorique() {
     }
   } catch (err) {
     console.error("Erreur chargement historique :", err);
+    historiqueListeEl.innerHTML = "";
+    afficherToast(`Historique : ${messageErreurReseau(err)}`);
   }
 }
 
@@ -2045,6 +2171,9 @@ function actionsPourStatut(statut, friendshipId, userId) {
     bouton("✕ Refuser", "btn-mini", (e) => supprimerRelation(friendshipId, e.target));
   } else if (statut === "ami") {
     bouton("✓ Ami", "btn-mini", null, true);
+    bouton("🗑️ Retirer", "btn-mini", (e) =>
+      supprimerRelation(friendshipId, e.target, "Retirer cet ami ?")
+    );
   }
 
   return div;
@@ -2056,7 +2185,7 @@ function rafraichirRechercheAmisSiActive() {
 }
 
 async function envoyerDemandeAmi(friendId, btn) {
-  btn.disabled = true;
+  definirChargementBouton(btn, true);
   try {
     const resp = await apiFetch("/amis/demandes", {
       method: "POST",
@@ -2064,41 +2193,49 @@ async function envoyerDemandeAmi(friendId, btn) {
       body: JSON.stringify({ friend_id: friendId }),
     });
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
     rafraichirRechercheAmisSiActive();
   } catch (err) {
     console.error("Erreur envoi demande d'ami :", err);
-    btn.disabled = false;
+    afficherToast(messageErreurReseau(err));
+    definirChargementBouton(btn, false);
   }
 }
 
 async function accepterDemande(friendshipId, btn) {
-  btn.disabled = true;
+  definirChargementBouton(btn, true);
   try {
     const resp = await apiFetch(`/amis/demandes/${friendshipId}/accepter`, { method: "POST" });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     chargerDemandesRecues();
     chargerListeAmis();
     rafraichirRechercheAmisSiActive();
   } catch (err) {
     console.error("Erreur acceptation demande d'ami :", err);
-    btn.disabled = false;
+    afficherToast(messageErreurReseau(err));
+    definirChargementBouton(btn, false);
   }
 }
 
-// Sert à la fois à refuser une demande reçue, annuler une demande envoyée, ou retirer
-// un ami déjà accepté (le backend distingue le cas via le statut de la relation).
-async function supprimerRelation(friendshipId, btn) {
-  btn.disabled = true;
+// Sert à la fois à refuser une demande reçue, annuler une demande envoyée, ou retirer un
+// ami déjà accepté (le backend distingue le cas via le statut de la relation). Une
+// confirmation n'est demandée que lorsqu'un message est fourni (retrait d'un ami déjà
+// établi) : refuser une demande reçue ou annuler une demande qu'on vient d'envoyer n'a pas
+// besoin de cette friction supplémentaire.
+async function supprimerRelation(friendshipId, btn, confirmMessage) {
+  if (confirmMessage && !confirm(confirmMessage)) return;
+
+  definirChargementBouton(btn, true);
   try {
     const resp = await apiFetch(`/amis/demandes/${friendshipId}`, { method: "DELETE" });
-    if (!resp.ok && resp.status !== 204) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok && resp.status !== 204) throw new Error(messageHttpGenerique(resp.status));
     chargerDemandesRecues();
     chargerListeAmis();
     rafraichirRechercheAmisSiActive();
   } catch (err) {
     console.error("Erreur suppression de la relation d'amitié :", err);
-    btn.disabled = false;
+    afficherToast(messageErreurReseau(err));
+    definirChargementBouton(btn, false);
   }
 }
 
@@ -2117,12 +2254,17 @@ function renderRechercheAmis(resultats) {
 }
 
 async function rechercherAmis(q) {
+  afficherChargementListe(amisRechercheResultatsEl);
+  amisRechercheResultatsEl.classList.remove("hidden");
+
   try {
     const resp = await apiFetch(`/amis/recherche?q=${encodeURIComponent(q)}`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     renderRechercheAmis(await resp.json());
   } catch (err) {
     console.error("Erreur recherche d'amis :", err);
+    amisRechercheResultatsEl.innerHTML = "";
+    afficherToast(`Recherche d'amis : ${messageErreurReseau(err)}`);
   }
 }
 
@@ -2140,9 +2282,12 @@ amisRechercheInput.addEventListener("input", () => {
 });
 
 async function chargerDemandesRecues() {
+  afficherChargementListe(amisDemandesListeEl);
+  amisDemandesTitreEl.classList.remove("hidden");
+
   try {
     const resp = await apiFetch("/amis/demandes");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const demandes = await resp.json();
 
     amisDemandesListeEl.innerHTML = "";
@@ -2154,25 +2299,42 @@ async function chargerDemandesRecues() {
     }
   } catch (err) {
     console.error("Erreur chargement des demandes d'amis :", err);
+    amisDemandesListeEl.innerHTML = "";
+    amisDemandesTitreEl.classList.add("hidden");
+    afficherToast(`Demandes d'amis : ${messageErreurReseau(err)}`);
   }
 }
 
 async function chargerListeAmis() {
+  afficherChargementListe(amisListeEl);
+  amisVideEl.classList.add("hidden");
+
   try {
     const resp = await apiFetch("/amis");
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const amis = await resp.json();
 
     amisListeEl.innerHTML = "";
     amisVideEl.classList.toggle("hidden", amis.length > 0);
     for (const a of amis) {
       const li = creerAmiLi(a.utilisateur, true);
-      li.querySelector(".ami-actions").remove();
+      const btnRetirer = document.createElement("button");
+      btnRetirer.type = "button";
+      btnRetirer.className = "btn-mini";
+      btnRetirer.textContent = "🗑️";
+      btnRetirer.setAttribute("aria-label", "Retirer cet ami");
+      btnRetirer.addEventListener("click", (e) => {
+        e.stopPropagation(); // ne doit pas aussi ouvrir le profil de l'ami
+        supprimerRelation(a.id, btnRetirer, "Retirer cet ami ?");
+      });
+      li.querySelector(".ami-actions").replaceWith(btnRetirer);
       li.addEventListener("click", () => ouvrirProfilAmi(a.utilisateur.id, a.utilisateur.nom));
       amisListeEl.appendChild(li);
     }
   } catch (err) {
     console.error("Erreur chargement de la liste d'amis :", err);
+    amisListeEl.innerHTML = "";
+    afficherToast(`Liste d'amis : ${messageErreurReseau(err)}`);
   }
 }
 
@@ -2200,14 +2362,14 @@ function renderHistoriqueAmi(entries) {
 async function ouvrirProfilAmi(friendId, nomAffiche) {
   amiProfilTitreEl.textContent = nomAffiche;
   amiRefaireMsgEl.classList.add("hidden");
-  amiHistoriqueListeEl.innerHTML = "";
+  afficherChargementListe(amiHistoriqueListeEl);
   amiHistoriqueVideEl.classList.add("hidden");
   openSheet("ami-profil");
   document.querySelector('.tab-btn[data-sheet="profil"]')?.classList.add("active");
 
   try {
     const resp = await apiFetch(`/amis/${friendId}/profil`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     const data = await resp.json();
 
     afficherPhoto(data.utilisateur.photo_base64, amiProfilPhotoEl, amiProfilPhotoPlaceholderEl);
@@ -2220,14 +2382,17 @@ async function ouvrirProfilAmi(friendId, nomAffiche) {
     amiStatsDureeTotaleEl.textContent = formatDureeS(stats.duree_totale_s);
   } catch (err) {
     console.error("Erreur chargement du profil ami :", err);
+    afficherToast(`Profil : ${messageErreurReseau(err)}`);
   }
 
   try {
     const resp = await apiFetch(`/amis/${friendId}/historique`);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
     renderHistoriqueAmi(await resp.json());
   } catch (err) {
     console.error("Erreur chargement de l'historique de l'ami :", err);
+    amiHistoriqueListeEl.innerHTML = "";
+    afficherToast(`Historique : ${messageErreurReseau(err)}`);
   }
 }
 
@@ -2238,12 +2403,12 @@ async function refaireRandoAmi(itineraireId, btn) {
   try {
     const resp = await apiFetch(`/itineraires/${itineraireId}`);
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
 
     chargerItineraireDansLaCarte(data);
     openSheet("itineraire");
   } catch (err) {
-    amiRefaireMsgEl.textContent = err.message;
+    amiRefaireMsgEl.textContent = messageErreurReseau(err);
     amiRefaireMsgEl.classList.remove("hidden", "msg-success", "msg-info");
     amiRefaireMsgEl.classList.add("msg-error");
   } finally {
@@ -2399,11 +2564,11 @@ btnChercherSuggestions.addEventListener("click", async () => {
       `/sentiers/suggestions?lat=${centre.lat}&lon=${centre.lng}&rayon_km=10`
     );
     const data = await resp.json();
-    if (!resp.ok) throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+    if (!resp.ok) throw new Error(data.detail || messageHttpGenerique(resp.status));
     renderSuggestions(data);
   } catch (err) {
     console.error("Erreur recherche de sentiers :", err);
-    suggestionsMsgEl.textContent = "Erreur lors de la recherche de sentiers. Réessayez plus tard.";
+    suggestionsMsgEl.textContent = messageErreurReseau(err);
     suggestionsMsgEl.classList.remove("hidden", "msg-success", "msg-info");
     suggestionsMsgEl.classList.add("msg-error");
   } finally {
@@ -2499,12 +2664,12 @@ formItineraire.addEventListener("submit", async (e) => {
 
     const data = await resp.json();
     if (!resp.ok) {
-      throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+      throw new Error(data.detail || messageHttpGenerique(resp.status));
     }
 
     chargerItineraireDansLaCarte(data);
   } catch (err) {
-    itineraireErrorEl.textContent = err.message;
+    itineraireErrorEl.textContent = messageErreurReseau(err);
     itineraireErrorEl.classList.remove("hidden");
   } finally {
     updateBtnGenererState();
@@ -2542,7 +2707,7 @@ formSignalement.addEventListener("submit", async (e) => {
 
     const data = await resp.json();
     if (!resp.ok) {
-      throw new Error(data.detail || `Erreur HTTP ${resp.status}`);
+      throw new Error(data.detail || messageHttpGenerique(resp.status));
     }
 
     signalementMsgEl.textContent = "Signalement envoyé, merci !";

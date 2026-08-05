@@ -98,6 +98,8 @@
     <button type="button" id="btn-gps-error-close" aria-label="Fermer">✕</button>
   </div>
 
+  <div id="toast" class="toast hidden" role="status"></div>
+
   <div id="nav-instruction-banner" class="nav-instruction-banner hidden">
     <span id="nav-instruction-icone" class="nav-instruction-icone"></span>
     <div class="nav-instruction-texte">
@@ -184,6 +186,7 @@
       <button type="button" id="btn-terminer-nav" class="btn-secondary hidden">🏁 Terminer la rando</button>
       <p id="terminer-nav-msg" class="msg hidden"></p>
       <div id="meteo-panel" class="meteo hidden">
+        <p id="meteo-loading" class="msg msg-info hidden">⏳ Chargement de la météo...</p>
         <p class="meteo-main">
           <span id="meteo-icon"></span>
           <span id="meteo-temp"></span>°C — <span id="meteo-desc"></span>

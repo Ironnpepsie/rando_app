@@ -81,6 +81,19 @@ html, body {
   border-color: var(--accent);
 }
 
+.map-fab.loading {
+  animation: map-fab-pulse 1s ease-in-out infinite;
+}
+
+@keyframes map-fab-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 /* ---------- Marqueur de position GPS en direct ---------- */
 
 .gps-dot {
@@ -784,6 +797,39 @@ button[type="submit"]:disabled {
 
 .hidden {
   display: none;
+}
+
+/* ---------- Toast (échec réseau d'une action en arrière-plan, sans panneau dédié) ---------- */
+
+.toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 1300;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--error-text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.toast-info {
+  border-left-color: var(--info-text);
+}
+
+/* ---------- Texte "chargement..." générique inséré dans une liste en attente ---------- */
+
+.liste-chargement {
+  color: var(--text-secondary);
+  font-style: italic;
+  text-align: center;
+  padding: 10px 0;
+  font-size: 13px;
 }
 
 .historique-liste {
