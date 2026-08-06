@@ -412,7 +412,7 @@ verifierSession();
 const TYPE_META = {
   eboulement: { emoji: "🪨", label: "Éboulement" },
   sentier_bloque: { emoji: "🚧", label: "Sentier bloqué" },
-  pont_casse: { emoji: "🌉", label: "Pont cassé" },
+  pont_casse: { emoji: "🌉", label: "Pont délabré" },
   animal: { emoji: "🐾", label: "Animal dangereux" },
   autre: { emoji: "❓", label: "Autre" },
 };
@@ -614,6 +614,11 @@ const itineraireErrorEl = document.getElementById("itineraire-error");
 const formSignalement = document.getElementById("form-signalement");
 const btnSignaler = document.getElementById("btn-signaler");
 const signalementMsgEl = document.getElementById("signalement-msg");
+const typeSignalementSelect = document.getElementById("type-signalement");
+const blocPointPratiqueEl = document.getElementById("bloc-point-pratique");
+const sousTypePointPratiqueSelect = document.getElementById("sous-type-point-pratique");
+const nomPointPratiqueEl = document.getElementById("nom-point-pratique");
+const descriptionSignalementEl = document.getElementById("description-signalement");
 const btnRefreshSignalements = document.getElementById("btn-refresh-signalements");
 const historiqueListeEl = document.getElementById("historique-liste");
 const historiqueVideEl = document.getElementById("historique-vide");
@@ -835,6 +840,20 @@ btnPickArrivee.addEventListener("click", () => {
 btnPickSignalement.addEventListener("click", () => {
   setPickMode(pickMode === "signalement" ? null : "signalement");
 });
+
+const DESCRIPTION_PLACEHOLDER_DEFAUT = "Optionnel";
+const DESCRIPTION_PLACEHOLDER_POINT_PRATIQUE =
+  "Optionnel — ex: \"point d'eau tari\", \"refuge fermé\" (problème sur un point existant), ou laisser vide pour un nouveau point";
+
+function syncBlocPointPratique() {
+  const estPointPratique = typeSignalementSelect.value === "point_pratique";
+  blocPointPratiqueEl.classList.toggle("hidden", !estPointPratique);
+  descriptionSignalementEl.placeholder = estPointPratique
+    ? DESCRIPTION_PLACEHOLDER_POINT_PRATIQUE
+    : DESCRIPTION_PLACEHOLDER_DEFAUT;
+}
+
+typeSignalementSelect.addEventListener("change", syncBlocPointPratique);
 
 btnPickingCancel.addEventListener("click", () => setPickMode(null));
 
@@ -1702,7 +1721,7 @@ const POINTS_PRATIQUES_META = {
 function pointPratiqueIcon(type) {
   const meta = POINTS_PRATIQUES_META[type] || { emoji: "❓", label: "Point pratique" };
   return L.divIcon({
-    html: `<div class="map-badge map-badge-anim"><span>${meta.emoji}</span></div>`,
+    html: `<div class="map-badge map-badge-pratique map-badge-anim"><span>${meta.emoji}</span></div>`,
     className: "",
     iconSize: [32, 32],
     iconAnchor: [16, 16],
@@ -1743,27 +1762,71 @@ function pointPratiquePopupHtml(p) {
   return `<strong>${meta.emoji} ${meta.label}</strong>${p.nom ? `<br>${p.nom}` : ""}${infoParcours}`;
 }
 
+// Popup d'un point pratique signalé par la communauté (categorie=point_pratique),
+// distinct de pointPratiquePopupHtml (points OSM) : ajoute la mention "communauté",
+// le compteur de confirmations et les actions confirmer/supprimer déjà utilisées pour
+// les signalements de danger (voir renderAllSignalements).
+function pointPratiqueCommunautaireHtml(s) {
+  const meta = POINTS_PRATIQUES_META[s.type] || { emoji: "❓", label: "Point pratique" };
+  const estProprietaire = currentUser && s.user_id === currentUser.id;
+  return `
+    <strong>${meta.emoji} ${meta.label}</strong>${s.nom ? `<br>${escapeHtml(s.nom)}` : ""}<br>
+    📍 Signalé par la communauté${s.description ? `<br>${escapeHtml(s.description)}` : ""}<br>
+    👍 ${s.upvotes} confirmation(s)
+    ${
+      estProprietaire
+        ? `<br><button type="button" class="btn-supprimer-signalement" data-id="${s.id}" data-pratique="1">🗑️ Supprimer</button>`
+        : `<br><button type="button" class="btn-confirmer-signalement" data-id="${s.id}" data-pratique="1">👍 Confirmer</button>`
+    }
+  `;
+}
+
 async function fetchPointsPratiques(traceCoords) {
   pointsPratiquesLayer.clearLayers();
   if (!traceCoords || traceCoords.length === 0) return;
 
   btnPointsPratiquesToggle.classList.add("loading");
   try {
-    const resp = await apiFetch(`/sentiers/points-pratiques`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        trace: traceCoords.map(([lat, lon]) => [lat, lon]),
-        rayon_m: 300,
-      }),
+    const traceJson = JSON.stringify({
+      trace: traceCoords.map(([lat, lon]) => [lat, lon]),
+      rayon_m: 300,
     });
-    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
-    const points = await resp.json();
+    const [respOsm, respCommunaute] = await Promise.all([
+      apiFetch(`/sentiers/points-pratiques`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: traceJson,
+      }),
+      apiFetch(`/signalements/points-pratiques-proches`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: traceJson,
+      }),
+    ]);
 
-    for (const p of points) {
-      L.marker([p.lat, p.lon], { icon: pointPratiqueIcon(p.type) })
-        .bindPopup(() => pointPratiquePopupHtml(p))
-        .addTo(pointsPratiquesLayer);
+    // Les deux sources sont traitées indépendamment : l'échec de l'une (ex. Overpass
+    // injoignable) ne doit pas empêcher d'afficher les points déjà obtenus de l'autre.
+    if (respOsm.ok) {
+      const points = await respOsm.json();
+      for (const p of points) {
+        L.marker([p.lat, p.lon], { icon: pointPratiqueIcon(p.type) })
+          .bindPopup(() => pointPratiquePopupHtml(p))
+          .addTo(pointsPratiquesLayer);
+      }
+    } else {
+      console.error("Erreur chargement points pratiques OSM :", await respOsm.text());
+      afficherToast(`Points pratiques : ${messageHttpGenerique(respOsm.status)}`);
+    }
+
+    if (respCommunaute.ok) {
+      const pointsCommunaute = await respCommunaute.json();
+      for (const s of pointsCommunaute) {
+        L.marker([s.lat, s.lon], { icon: pointPratiqueIcon(s.type) })
+          .bindPopup(() => pointPratiqueCommunautaireHtml(s))
+          .addTo(pointsPratiquesLayer);
+      }
+    } else {
+      console.error("Erreur chargement points pratiques communautaires :", await respCommunaute.text());
     }
   } catch (err) {
     console.error("Erreur chargement points pratiques :", err);
@@ -1964,7 +2027,11 @@ function renderAllSignalements() {
       ${s.description ? `${s.description}<br>` : ""}
       👍 ${s.upvotes} confirmation(s)<br>
       Expire le ${expireDate}
-      ${estProprietaire ? `<br><button type="button" class="btn-supprimer-signalement" data-id="${s.id}">🗑️ Supprimer</button>` : ""}
+      ${
+        estProprietaire
+          ? `<br><button type="button" class="btn-supprimer-signalement" data-id="${s.id}">🗑️ Supprimer</button>`
+          : `<br><button type="button" class="btn-confirmer-signalement" data-id="${s.id}">👍 Confirmer</button>`
+      }
     `;
     L.marker([s.lat, s.lon], { icon: signalementIcon(s.type, false) })
       .bindPopup(popup)
@@ -2011,12 +2078,39 @@ document.addEventListener("click", async (e) => {
   try {
     await supprimerSignalement(btn.dataset.id);
     map.closePopup();
-    renderAllSignalements();
+    if (btn.dataset.pratique) {
+      fetchPointsPratiques(currentTraceCoords);
+    } else {
+      renderAllSignalements();
+    }
   } catch (err) {
     console.error("Erreur suppression signalement :", err);
     afficherToast(messageErreurReseau(err));
     btn.disabled = false;
     btn.textContent = "🗑️ Supprimer";
+  }
+});
+
+document.addEventListener("click", async (e) => {
+  const btn = e.target.closest(".btn-confirmer-signalement");
+  if (!btn) return;
+
+  btn.disabled = true;
+  btn.textContent = "Confirmation...";
+  try {
+    const resp = await apiFetch(`/signalements/${btn.dataset.id}/confirmer`, { method: "POST" });
+    if (!resp.ok) throw new Error(messageHttpGenerique(resp.status));
+    map.closePopup();
+    if (btn.dataset.pratique) {
+      fetchPointsPratiques(currentTraceCoords);
+    } else {
+      fetchSignalementsProches(lastCenter.lat, lastCenter.lon);
+    }
+  } catch (err) {
+    console.error("Erreur confirmation signalement :", err);
+    afficherToast(messageErreurReseau(err));
+    btn.disabled = false;
+    btn.textContent = "👍 Confirmer";
   }
 });
 
@@ -2058,6 +2152,7 @@ function queueSignalementOffline(payload) {
   signalementMsgEl.classList.add("msg-info");
 
   formSignalement.reset();
+  syncBlocPointPratique();
   if (pendingMarker) {
     pendingMarker.remove();
     pendingMarker = null;
@@ -2859,15 +2954,37 @@ formSignalement.addEventListener("submit", async (e) => {
   btnSignaler.disabled = true;
   btnSignaler.textContent = "Envoi en cours...";
 
-  const description = document.getElementById("description-signalement").value.trim();
-  const payload = {
-    lat: signalementLatLng.lat,
-    lon: signalementLatLng.lng,
-    type: document.getElementById("type-signalement").value,
-    description: description || null,
-  };
+  const estPointPratique = typeSignalementSelect.value === "point_pratique";
+  const description = descriptionSignalementEl.value.trim();
+  const payload = estPointPratique
+    ? {
+        lat: signalementLatLng.lat,
+        lon: signalementLatLng.lng,
+        type: sousTypePointPratiqueSelect.value,
+        categorie: "point_pratique",
+        nom: nomPointPratiqueEl.value.trim() || null,
+        description: description || null,
+      }
+    : {
+        lat: signalementLatLng.lat,
+        lon: signalementLatLng.lng,
+        type: typeSignalementSelect.value,
+        description: description || null,
+      };
 
+  // Les points pratiques ne passent pas par la file d'attente hors-ligne des
+  // signalements de danger (pas de couche/rendu "en attente" prévu pour ce type) :
+  // on demande simplement de réessayer une fois reconnecté.
   if (!navigator.onLine) {
+    if (estPointPratique) {
+      signalementMsgEl.textContent =
+        "Connexion nécessaire pour envoyer un point pratique. Réessaie une fois reconnecté(e).";
+      signalementMsgEl.classList.remove("hidden", "msg-success", "msg-info");
+      signalementMsgEl.classList.add("msg-error");
+      btnSignaler.disabled = !signalementLatLng;
+      btnSignaler.textContent = "Envoyer le signalement";
+      return;
+    }
     queueSignalementOffline(payload);
     return;
   }
@@ -2889,6 +3006,7 @@ formSignalement.addEventListener("submit", async (e) => {
     signalementMsgEl.classList.add("msg-success");
 
     formSignalement.reset();
+    syncBlocPointPratique();
     if (pendingMarker) {
       pendingMarker.remove();
       pendingMarker = null;
@@ -2896,10 +3014,23 @@ formSignalement.addEventListener("submit", async (e) => {
     signalementLatLng = null;
     signalementCoordsEl.textContent = "Aucune position sélectionnée";
 
-    fetchSignalementsProches(data.lat, data.lon);
+    if (estPointPratique) {
+      fetchPointsPratiques(currentTraceCoords);
+    } else {
+      fetchSignalementsProches(data.lat, data.lon);
+    }
   } catch (err) {
     if (err instanceof TypeError) {
-      // Échec réseau (pas de réponse du serveur) plutôt qu'une erreur applicative : on met en file d'attente
+      // Échec réseau (pas de réponse du serveur) plutôt qu'une erreur applicative
+      if (estPointPratique) {
+        signalementMsgEl.textContent = messageErreurReseau(err);
+        signalementMsgEl.classList.remove("hidden", "msg-success", "msg-info");
+        signalementMsgEl.classList.add("msg-error");
+        btnSignaler.disabled = !signalementLatLng;
+        btnSignaler.textContent = "Envoyer le signalement";
+        return;
+      }
+      // met en file d'attente pour les signalements de danger
       queueSignalementOffline(payload);
       return;
     }

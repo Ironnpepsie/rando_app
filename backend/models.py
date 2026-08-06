@@ -48,6 +48,12 @@ class SignalementType(str, enum.Enum):
     pont_casse = "pont_casse"
     animal = "animal"
     autre = "autre"
+    # Sous-catégories pour categorie=point_pratique : mêmes valeurs que les points
+    # pratiques OSM (voir TAGS_POINTS_PRATIQUES dans routers/sentiers.py) pour un
+    # rendu unifié sur la carte.
+    refuge = "refuge"
+    eau = "eau"
+    abri = "abri"
 
 
 class SignalementStatut(str, enum.Enum):
@@ -56,13 +62,23 @@ class SignalementStatut(str, enum.Enum):
     invalide = "invalide"
 
 
-# Durée de validité par défaut avant expiration auto, selon le type de signalement
+class CategorieSignalement(str, enum.Enum):
+    danger = "danger"
+    point_pratique = "point_pratique"
+
+
+# Durée de validité par défaut avant expiration auto, selon le type de signalement.
+# Les points pratiques (refuge/eau/abri) sont une info durable plutôt qu'un danger
+# ponctuel : durée de vie nettement plus longue que les signalements de danger.
 EXPIRATION_PAR_TYPE = {
     SignalementType.eboulement: timedelta(days=15),
     SignalementType.sentier_bloque: timedelta(days=15),
     SignalementType.pont_casse: timedelta(days=15),
     SignalementType.animal: timedelta(days=2),
     SignalementType.autre: timedelta(days=7),
+    SignalementType.refuge: timedelta(days=90),
+    SignalementType.eau: timedelta(days=90),
+    SignalementType.abri: timedelta(days=90),
 }
 
 
@@ -93,6 +109,8 @@ class Signalement(Base):
     lat = Column(Float, nullable=False)
     lon = Column(Float, nullable=False)
     type = Column(Enum(SignalementType), nullable=False)
+    categorie = Column(Enum(CategorieSignalement), nullable=False, default=CategorieSignalement.danger)
+    nom = Column(String, nullable=True)  # nom du point pratique (categorie=point_pratique uniquement)
     description = Column(Text, nullable=True)
     photo_url = Column(String, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

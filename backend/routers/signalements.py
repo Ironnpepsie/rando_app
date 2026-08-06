@@ -21,6 +21,10 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    return _haversine_km(lat1, lon1, lat2, lon2) * 1000
+
+
 @router.post("", response_model=schemas.SignalementOut)
 def creer_signalement(
     payload: schemas.SignalementCreate,
@@ -41,8 +45,12 @@ def signalements_proches(
     rayon_km: float = 5.0,
     db: Session = Depends(get_db),
 ):
+    # Ne renvoie que les signalements de danger : les points pratiques communautaires
+    # (categorie=point_pratique) ont leur propre endpoint (/points-pratiques-proches)
+    # et leur propre couche carte, pour ne pas les afficher deux fois.
     candidats = (
         db.query(models.Signalement)
+        .filter(models.Signalement.categorie == models.CategorieSignalement.danger)
         .filter(models.Signalement.statut != models.SignalementStatut.invalide)
         .all()
     )
@@ -53,6 +61,38 @@ def signalements_proches(
         if s.statut != models.SignalementStatut.actif:
             continue
         if _haversine_km(lat, lon, s.lat, s.lon) <= rayon_km:
+            resultats.append(s)
+
+    db.commit()
+    return resultats
+
+
+@router.post("/points-pratiques-proches", response_model=list[schemas.SignalementOut])
+def points_pratiques_communaute_proches(
+    payload: schemas.PointsPratiquesCommunauteRequest,
+    db: Session = Depends(get_db),
+):
+    """Signalements communautaires de points pratiques (refuge/eau/abri) proches d'un
+    tracé, à afficher aux côtés des points pratiques OSM (voir /sentiers/points-pratiques)
+    sur la même couche carte plutôt que d'ajouter un toggle dédié."""
+    trace = payload.trace
+    if len(trace) < 1:
+        return []
+    rayon_m = payload.rayon_m
+
+    candidats = (
+        db.query(models.Signalement)
+        .filter(models.Signalement.categorie == models.CategorieSignalement.point_pratique)
+        .filter(models.Signalement.statut != models.SignalementStatut.invalide)
+        .all()
+    )
+
+    resultats = []
+    for s in candidats:
+        reliability.recalculer_statut(s)
+        if s.statut != models.SignalementStatut.actif:
+            continue
+        if min(_haversine_m(pt[0], pt[1], s.lat, s.lon) for pt in trace) <= rayon_m:
             resultats.append(s)
 
     db.commit()

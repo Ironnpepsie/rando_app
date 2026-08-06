@@ -16,6 +16,8 @@
   --error-bg: rgba(248, 113, 113, 0.12);
   --info-text: #fbbf24;
   --info-bg: rgba(251, 191, 36, 0.12);
+  --pratique-text: #38bdf8;
+  --pratique-bg: rgba(56, 189, 248, 0.12);
   --shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
   --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.5);
 }
@@ -182,6 +184,13 @@ html, body {
   border-style: dashed;
   border-color: var(--info-text);
   opacity: 0.9;
+}
+
+/* Points pratiques (refuges, points d'eau, abris — OSM et communautaires confirmés) :
+   bordure bleue plutôt que l'orange des signalements de danger, pour distinguer les
+   deux catégories d'un coup d'œil sur la carte. */
+.map-badge-pratique {
+  border-color: var(--pratique-text);
 }
 
 @keyframes badge-pop-in {

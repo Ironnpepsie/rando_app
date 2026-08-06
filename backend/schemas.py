@@ -8,6 +8,7 @@ from models import (
     ModeItineraireEnum,
     SignalementType,
     SignalementStatut,
+    CategorieSignalement,
     FriendshipStatusEnum,
 )
 
@@ -102,12 +103,36 @@ class ItineraireResume(BaseModel):
 
 # --- Signalement ---
 
+# Sous-catégories (champ `type`) valides pour chaque catégorie de signalement.
+TYPES_DANGER = {
+    SignalementType.eboulement,
+    SignalementType.sentier_bloque,
+    SignalementType.pont_casse,
+    SignalementType.animal,
+    SignalementType.autre,
+}
+TYPES_POINT_PRATIQUE = {SignalementType.refuge, SignalementType.eau, SignalementType.abri}
+
+
 class SignalementCreate(BaseModel):
     lat: float
     lon: float
     type: SignalementType
+    categorie: CategorieSignalement = CategorieSignalement.danger
+    nom: Optional[str] = None
     description: Optional[str] = None
     photo_url: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _verifier_coherence_type_categorie(self):
+        types_attendus = (
+            TYPES_POINT_PRATIQUE if self.categorie == CategorieSignalement.point_pratique else TYPES_DANGER
+        )
+        if self.type not in types_attendus:
+            raise ValueError(
+                f"Le type '{self.type.value}' n'est pas valide pour la catégorie '{self.categorie.value}'"
+            )
+        return self
 
 
 class SignalementOut(BaseModel):
@@ -117,6 +142,8 @@ class SignalementOut(BaseModel):
     lat: float
     lon: float
     type: SignalementType
+    categorie: CategorieSignalement
+    nom: Optional[str] = None
     description: Optional[str] = None
     photo_url: Optional[str] = None
     user_id: int
@@ -125,6 +152,13 @@ class SignalementOut(BaseModel):
     score_fiabilite: int
     expire_at: datetime
     statut: SignalementStatut
+
+
+# --- Points pratiques communautaires (signalements categorie=point_pratique) ---
+
+class PointsPratiquesCommunauteRequest(BaseModel):
+    trace: list[list[float]]  # [[lat, lon], ...] (une éventuelle 3e valeur elevation est ignorée)
+    rayon_m: float = 300
 
 
 # --- RandoHistorique ---

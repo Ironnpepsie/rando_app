@@ -249,11 +249,26 @@
           <select id="type-signalement">
             <option value="eboulement">Éboulement</option>
             <option value="sentier_bloque">Sentier bloqué</option>
-            <option value="pont_casse">Pont cassé</option>
+            <option value="pont_casse">Pont délabré</option>
             <option value="animal">Animal dangereux</option>
+            <option value="point_pratique">📍 Point pratique manquant/à corriger</option>
             <option value="autre">Autre</option>
           </select>
         </label>
+        <div class="field-block hidden" id="bloc-point-pratique">
+          <label>
+            Sous-catégorie
+            <select id="sous-type-point-pratique">
+              <option value="refuge">🏠 Refuge</option>
+              <option value="eau">💧 Point d'eau</option>
+              <option value="abri">⛺ Abri</option>
+            </select>
+          </label>
+          <label>
+            Nom (optionnel)
+            <input type="text" id="nom-point-pratique" placeholder="Ex: Refuge de la Charpoua" />
+          </label>
+        </div>
         <label>
           Description
           <textarea id="description-signalement" rows="2" placeholder="Optionnel"></textarea>

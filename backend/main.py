@@ -61,6 +61,20 @@ def _migrer_colonnes_users():
         conn.commit()
 
 
+def _migrer_colonnes_signalements():
+    """Ajoute les colonnes de la feature "points pratiques communautaires" (catégorie
+    danger/point_pratique + nom du point) si la base a été créée avant leur ajout."""
+    with engine.connect() as conn:
+        colonnes = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(signalements)")}
+        if "categorie" not in colonnes:
+            conn.exec_driver_sql(
+                "ALTER TABLE signalements ADD COLUMN categorie VARCHAR NOT NULL DEFAULT 'danger'"
+            )
+        if "nom" not in colonnes:
+            conn.exec_driver_sql("ALTER TABLE signalements ADD COLUMN nom VARCHAR")
+        conn.commit()
+
+
 def _migrer_vers_comptes_utilisateurs():
     """Passage au système de comptes utilisateurs (JWT) : signalements et
     historique étaient liés à une identité anonyme localStorage (createur_id /
@@ -86,6 +100,7 @@ async def lifespan(app: FastAPI):
     _migrer_colonnes_itineraires()
     _migrer_colonnes_historique()
     _migrer_colonnes_users()
+    _migrer_colonnes_signalements()
     yield
 
 
